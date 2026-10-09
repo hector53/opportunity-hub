@@ -45,3 +45,46 @@ describe("message classification", () => {
     expect(classifyMessage("Hola", "Nada relevante aquí")).toBe("unclassified");
   });
 });
+
+import { analyzeUrl, detectContentRisks, extractUrls } from "@/server/security/risk-rules";
+
+describe("Security Gate — URL fields", () => {
+  const clean = "We are a small SaaS team looking for a senior React/Node engineer. Remote.";
+
+  it("raises an alert when the dangerous link is ONLY in the originalUrl field", () => {
+    expect(detectContentRisks({ text: clean })).toHaveLength(0);
+    for (const url of [
+      "https://bit.ly/3xYz",
+      "http://185.23.4.10/apply",
+      "https://files.example.com/setup.exe",
+      "https://github.com/acme/take-home-test",
+      "https://xn--upwrk-3ua.com/jobs/1",
+      "https://user:pass@example.com/job",
+      "javascript:alert(1)",
+    ]) {
+      const f = detectContentRisks({ text: clean, urls: [{ field: "originalUrl", url }] });
+      expect(f.length, url).toBeGreaterThan(0);
+      expect(f.every((x) => x.evidence.startsWith("originalUrl:")), url).toBe(true);
+    }
+  });
+
+  it("flags a URL that doesn't belong to the declared platform (lookalike domains)", () => {
+    const f = analyzeUrl("https://upwork.com.job-offer.io/jobs/123", { field: "originalUrl", expectedSource: "upwork" });
+    expect(f.map((x) => x.rule)).toContain("url-platform-mismatch");
+    expect(analyzeUrl("https://www.upwork.com/jobs/~0123", { field: "originalUrl", expectedSource: "upwork" })).toHaveLength(0);
+    expect(analyzeUrl("https://www.getonbrd.com/jobs/dev-acme", { field: "originalUrl", expectedSource: "getonboard" })).toHaveLength(0);
+  });
+
+  it("scans links inside notification text without duplicating text-rule alerts", () => {
+    expect(extractUrls("see https://a.com/x, and http://b.io/y.")).toEqual(["https://a.com/x", "http://b.io/y"]);
+    const f = detectContentRisks({ text: "Please log in at https://admin:secret@portal.example.com now", scanTextLinks: true });
+    expect(f.map((x) => x.rule)).toContain("url-embedded-credentials");
+    const shortener = detectContentRisks({ text: "Apply at https://bit.ly/abc", scanTextLinks: true });
+    expect(shortener.filter((x) => x.type === "unusual_links")).toHaveLength(1);
+  });
+
+  it("combines a repository URL with execution instructions in the text as high risk", () => {
+    const f = detectContentRisks({ text: "Clone it and run npm install", urls: [{ field: "originalUrl", url: "https://gitlab.com/x/y" }] });
+    expect(f.some((x) => x.rule === "repo-plus-execution")).toBe(true);
+  });
+});

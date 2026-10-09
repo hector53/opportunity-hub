@@ -7,7 +7,7 @@ import { db, schema } from "@/server/db/client";
 import { assertAuthenticated } from "@/server/auth/guard";
 import { logActivity } from "@/server/services/activity";
 import { classifyMessage } from "@/server/inbox/classify";
-import { detectRisks } from "@/server/security/risk-rules";
+import { detectContentRisks } from "@/server/security/risk-rules";
 import { sha256 } from "@/lib/hash";
 
 export type InboxState = { error?: string; ok?: string } | undefined;
@@ -61,7 +61,11 @@ export async function addMessageAction(_prev: InboxState, formData: FormData): P
     .onConflictDoNothing()
     .returning();
   if (!msg) return { error: "Este mensaje ya estaba importado (duplicado)." };
-  const risks = detectRisks(`${d.subject ?? ""}\n${d.body}`);
+  const risks = detectContentRisks({
+    text: `${d.subject ?? ""}\n${d.body}`,
+    urls: [{ field: "enlace original", url: d.originalUrl, expectedSource: d.sourceKey === "email" || d.sourceKey === "manual" ? null : d.sourceKey }],
+    scanTextLinks: true,
+  });
   if (risks.length) await db.insert(schema.riskFlags).values(risks.map((r) => ({ ...r, messageId: msg.id, detectedBy: "rules" })));
   await logActivity({ entityType: "message", entityId: msg.id, action: "imported", summary: `Mensaje importado (${msg.classification}): ${d.subject ?? d.body.slice(0, 60)}` });
   revalidatePath("/", "layout");
