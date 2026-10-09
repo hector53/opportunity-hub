@@ -1,0 +1,344 @@
+{
+  "data": [
+    {
+      "id": "senior-fullstack-engineer-example-labs-remote",
+      "type": "job",
+      "attributes": {
+        "title": "Senior Full-Stack Engineer",
+        "description_headline": "What you bring",
+        "description": "<ul><li>5+ years with TypeScript, React and Node.js</li><li>PostgreSQL &amp; REST APIs</li></ul>",
+        "projects": "<p>Small product team building a B2B platform.</p>",
+        "functions_headline": "What you will do",
+        "functions": "<ul><li>Build features end to end</li><li>Collaborate with product</li></ul>",
+        "benefits_headline": "Benefits",
+        "benefits": "<ul><li>Fully remote</li></ul>",
+        "desirable_headline": "Nice to have",
+        "desirable": "<p>Experience with real-time systems.</p>",
+        "remote": true,
+        "remote_modality": "fully_remote",
+        "remote_zone": null,
+        "countries": [
+          "Remote"
+        ],
+        "lang": "en",
+        "category_name": "Programming",
+        "perks": [],
+        "min_salary": 4000,
+        "max_salary": 5500,
+        "published_at": 1790000000,
+        "response_time_in_days": {
+          "min": null,
+          "max": null
+        },
+        "applications_count": 12,
+        "location_regions": {
+          "data": []
+        },
+        "location_tenants": {
+          "data": []
+        },
+        "location_cities": {
+          "data": []
+        },
+        "modality": {
+          "data": {
+            "id": "1",
+            "type": "modality",
+            "attributes": {
+              "name": "Full Time",
+              "locale_key": "full_time"
+            }
+          }
+        },
+        "seniority": {
+          "data": {
+            "id": "4",
+            "type": "seniority",
+            "attributes": {
+              "name": "Senior",
+              "locale_key": "senior"
+            }
+          }
+        },
+        "tags": {
+          "data": [
+            {
+              "id": "typescript",
+              "type": "tag",
+              "attributes": {
+                "name": "TypeScript",
+                "keywords": ""
+              }
+            },
+            {
+              "id": "react",
+              "type": "tag",
+              "attributes": {
+                "name": "React",
+                "keywords": ""
+              }
+            },
+            {
+              "id": "node.js",
+              "type": "tag",
+              "attributes": {
+                "name": "Node.js",
+                "keywords": ""
+              }
+            }
+          ]
+        },
+        "company": {
+          "data": {
+            "id": "example-labs",
+            "type": "company",
+            "attributes": {
+              "name": "Example Labs",
+              "description": "Fictional company used only in tests.",
+              "long_description": "",
+              "projects": null,
+              "benefits": null,
+              "web": "https://example.com",
+              "twitter": null,
+              "github": null,
+              "facebook": null,
+              "angellist": null,
+              "country": "US",
+              "response_time_in_days": {
+                "min": null,
+                "max": null
+              },
+              "logo": null
+            }
+          }
+        }
+      },
+      "links": {
+        "public_url": "https://www.getonbrd.com/jobs/senior-fullstack-engineer-example-labs-remote"
+      }
+    },
+    {
+      "id": "desarrollador-backend-node-acme-ficticia-remote",
+      "type": "job",
+      "attributes": {
+        "title": "Desarrollador Backend Node.js",
+        "description_headline": "What you bring",
+        "description": "<p>Buscamos un desarrollador con experiencia en Node.js, NestJS y PostgreSQL para nuestro equipo.</p>",
+        "projects": "<p>Small product team building a B2B platform.</p>",
+        "functions_headline": "What you will do",
+        "functions": "<ul><li>Build features end to end</li><li>Collaborate with product</li></ul>",
+        "benefits_headline": "Benefits",
+        "benefits": "<ul><li>Fully remote</li></ul>",
+        "desirable_headline": "Nice to have",
+        "desirable": "<p>Experience with real-time systems.</p>",
+        "remote": true,
+        "remote_modality": "remote_local",
+        "remote_zone": null,
+        "countries": [
+          "Remote"
+        ],
+        "lang": "es",
+        "category_name": "Programming",
+        "perks": [],
+        "min_salary": null,
+        "max_salary": null,
+        "published_at": 1790000000,
+        "response_time_in_days": {
+          "min": null,
+          "max": null
+        },
+        "applications_count": 3,
+        "location_regions": {
+          "data": []
+        },
+        "location_tenants": {
+          "data": []
+        },
+        "location_cities": {
+          "data": []
+        },
+        "modality": {
+          "data": {
+            "id": "3",
+            "type": "modality",
+            "attributes": {
+              "name": "Freelance",
+              "locale_key": "freelance"
+            }
+          }
+        },
+        "seniority": {
+          "data": {
+            "id": "4",
+            "type": "seniority",
+            "attributes": {
+              "name": "Semi Senior",
+              "locale_key": "semi senior"
+            }
+          }
+        },
+        "tags": {
+          "data": [
+            {
+              "id": "node.js",
+              "type": "tag",
+              "attributes": {
+                "name": "Node.js",
+                "keywords": ""
+              }
+            },
+            {
+              "id": "nestjs",
+              "type": "tag",
+              "attributes": {
+                "name": "NestJS",
+                "keywords": ""
+              }
+            }
+          ]
+        },
+        "company": {
+          "data": {
+            "id": "acme-ficticia",
+            "type": "company",
+            "attributes": {
+              "name": "Acme Ficticia",
+              "description": "Fictional company used only in tests.",
+              "long_description": "",
+              "projects": null,
+              "benefits": null,
+              "web": "https://example.com",
+              "twitter": null,
+              "github": null,
+              "facebook": null,
+              "angellist": null,
+              "country": "US",
+              "response_time_in_days": {
+                "min": null,
+                "max": null
+              },
+              "logo": null
+            }
+          }
+        }
+      },
+      "links": {
+        "public_url": "https://www.getonbrd.com/jobs/desarrollador-backend-node-acme-ficticia-remote"
+      }
+    },
+    {
+      "id": "ai-engineer-sample-co-remote",
+      "type": "job",
+      "attributes": {
+        "title": "Applied AI Engineer",
+        "description_headline": "What you bring",
+        "description": "<p>Build LLM features with RAG and Python (FastAPI).</p>",
+        "projects": "<p>Small product team building a B2B platform.</p>",
+        "functions_headline": "What you will do",
+        "functions": "<ul><li>Build features end to end</li><li>Collaborate with product</li></ul>",
+        "benefits_headline": "Benefits",
+        "benefits": "<ul><li>Fully remote</li></ul>",
+        "desirable_headline": "Nice to have",
+        "desirable": "<p>Experience with real-time systems.</p>",
+        "remote": true,
+        "remote_modality": "fully_remote",
+        "remote_zone": null,
+        "countries": [
+          "Remote"
+        ],
+        "lang": "en",
+        "category_name": "Programming",
+        "perks": [],
+        "min_salary": 3000,
+        "max_salary": 3000,
+        "published_at": 1790000000,
+        "response_time_in_days": {
+          "min": null,
+          "max": null
+        },
+        "applications_count": 40,
+        "location_regions": {
+          "data": []
+        },
+        "location_tenants": {
+          "data": []
+        },
+        "location_cities": {
+          "data": []
+        },
+        "modality": {
+          "data": {
+            "id": "2",
+            "type": "modality",
+            "attributes": {
+              "name": "Part Time",
+              "locale_key": "part_time"
+            }
+          }
+        },
+        "seniority": {
+          "data": {
+            "id": "4",
+            "type": "seniority",
+            "attributes": {
+              "name": "Senior",
+              "locale_key": "senior"
+            }
+          }
+        },
+        "tags": {
+          "data": [
+            {
+              "id": "python",
+              "type": "tag",
+              "attributes": {
+                "name": "Python",
+                "keywords": ""
+              }
+            },
+            {
+              "id": "llm",
+              "type": "tag",
+              "attributes": {
+                "name": "LLM",
+                "keywords": ""
+              }
+            }
+          ]
+        },
+        "company": {
+          "data": {
+            "id": "sample-co",
+            "type": "company",
+            "attributes": {
+              "name": "Sample Co",
+              "description": "Fictional company used only in tests.",
+              "long_description": "",
+              "projects": null,
+              "benefits": null,
+              "web": "https://example.com",
+              "twitter": null,
+              "github": null,
+              "facebook": null,
+              "angellist": null,
+              "country": "US",
+              "response_time_in_days": {
+                "min": null,
+                "max": null
+              },
+              "logo": null
+            }
+          }
+        }
+      },
+      "links": {
+        "public_url": "https://www.getonbrd.com/jobs/ai-engineer-sample-co-remote"
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "per_page": 3,
+    "total_pages": 1
+  }
+}

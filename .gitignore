@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Next.js / build output
+.next/
+out/
+build/
+dist/
+next-env.d.ts
+*.tsbuildinfo
+
+# Environment & secrets (only .env.example is committed)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.crt
+secrets/
+credentials*.json
+token*.json
+
+# Private profile / local config
+config/*.local.json
+config/*.local.*
+
+# Databases, dumps and backups
+*.sql.gz
+*.dump
+*.backup
+backup-*
+*.sqlite
+*.db
+pgdata/
+
+# Tests
+playwright-report/
+test-results/
+blob-report/
+coverage/
+.vitest/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp

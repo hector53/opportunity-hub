@@ -1,0 +1,64 @@
+# Opportunity Hub — local/VM deployment.
+# Ports are bound to 127.0.0.1 only. Access remotely through an SSH tunnel.
+name: opportunity-hub
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-opportunity_hub}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-5434}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30", "-c", "work_mem=4MB"]
+    mem_limit: 256m
+
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-opportunity_hub}
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3100
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-3100}:3100"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3100/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # One-off maintenance tasks (seed, sync from CLI):
+  #   docker compose --profile tools run --rm tools npm run db:seed -- --demo
+  tools:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: tools
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-opportunity_hub}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
