@@ -91,3 +91,31 @@ test("filters by source and engagement", async ({ page }) => {
   const badges = page.locator("tbody tr td:first-child").getByText("Get on Board");
   if ((await badges.count()) > 0) await expect(page.locator("tbody tr td:first-child").getByText("Workana")).toHaveCount(0);
 });
+
+test("a dangerous link only in the URL field raises a Security Gate alert; confidence & eligibility are shown", async ({ page }) => {
+  await login(page);
+  const title = `E2E URL risk ${Date.now()}`;
+  await page.goto("/opportunities/new");
+  await page.getByLabel("Plataforma *").selectOption("upwork");
+  await page.getByLabel("Enlace original").fill("https://bit.ly/e2e-test-link");
+  await page.getByLabel("Título *").fill(title);
+  await page.getByLabel("Descripción (pega el texto de la oferta)").fill("Remote React and Node.js role for a small SaaS team, ongoing work.");
+  await page.getByRole("button", { name: "Importar y evaluar" }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  await expect(page.getByText("Unusual external links").first()).toBeVisible();
+  await expect(page.getByText(/originalUrl: https:\/\/bit\.ly/).first()).toBeVisible();
+  await expect(page.getByText(/Confianza (alta|media|baja)/).first()).toBeVisible();
+  await expect(page.getByText(/Elegibilidad geográfica/)).toBeVisible();
+
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: /Eliminar definitivamente/ }).click();
+  await expect(page).toHaveURL(/\/opportunities$/);
+});
+
+test("dashboard recommendations use the same criteria as the filter", async ({ page }) => {
+  await login(page);
+  const stat = page.locator("a", { hasText: "Recomendadas" }).first();
+  const count = Number((await stat.locator("p").nth(1).innerText()).trim());
+  await page.goto("/opportunities?recommended=1");
+  await expect(page.getByText(new RegExp(`^${count} resultados?\\.`))).toBeVisible();
+});

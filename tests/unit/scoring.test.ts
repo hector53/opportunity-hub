@@ -20,6 +20,7 @@ const base: ScoringInput = {
   remote: null,
   remoteModality: null,
   countries: [],
+  location: null,
   competitorCount: null,
 };
 

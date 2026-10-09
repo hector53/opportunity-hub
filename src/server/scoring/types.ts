@@ -1,3 +1,5 @@
+import type { EligibilityResult } from "./eligibility";
+
 export type Dimension = "tech" | "client" | "commercial" | "practical";
 
 export interface ScoreReason {
@@ -16,8 +18,13 @@ export interface DimensionResult {
   unknowns: string[];
 }
 
+export type ScoreConfidence = "high" | "medium" | "low";
+
 export type ScoreReasons = Record<Dimension, DimensionResult> & {
   overallNote?: string;
+  confidence?: ScoreConfidence;
+  confidenceNote?: string;
+  eligibility?: EligibilityResult;
 };
 
 export interface ScoreResult {
@@ -28,4 +35,8 @@ export interface ScoreResult {
   practical: DimensionResult;
   overall: number | null;
   overallNote: string;
+  /** How much of the score rests on known data (not a measure of fit). */
+  confidence: ScoreConfidence;
+  confidenceNote: string;
+  eligibility: EligibilityResult;
 }

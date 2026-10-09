@@ -133,3 +133,35 @@ export function ProvenanceTag({ kind, note }: { kind?: string; note?: string }) 
     </Badge>
   );
 }
+
+const CONFIDENCE: Record<string, [string, Tone, string]> = {
+  high: ["Confianza alta", "ok", "Las cuatro dimensiones tienen datos y la elegibilidad está resuelta"],
+  medium: ["Confianza media", "accent", "Falta una dimensión o la elegibilidad requiere revisión"],
+  low: ["Confianza baja", "warn", "Poca información: el score no es un encaje confirmado"],
+};
+
+export function ConfidenceBadge({ value, compact }: { value: string | null | undefined; compact?: boolean }) {
+  if (!value) return <Badge title="Sin recalcular con el scoring actual">Confianza ?</Badge>;
+  const [label, tone, title] = CONFIDENCE[value] ?? [value, "neutral", ""];
+  return (
+    <Badge tone={tone} title={title}>
+      {compact ? label.replace("Confianza ", "") : label}
+    </Badge>
+  );
+}
+
+const ELIGIBILITY: Record<string, [string, Tone, string]> = {
+  eligible: ["Elegible", "ok", "La ubicación del perfil está permitida"],
+  ineligible: ["No elegible", "bad", "Hay evidencia explícita que excluye la ubicación del perfil"],
+  needs_review: ["Revisar ubicación", "warn", "No hay información suficiente; no se asume incompatibilidad"],
+};
+
+export function EligibilityBadge({ value }: { value: string | null | undefined }) {
+  if (!value) return <Badge title="Sin recalcular con el scoring actual">Ubicación ?</Badge>;
+  const [label, tone, title] = ELIGIBILITY[value] ?? [value, "neutral", ""];
+  return (
+    <Badge tone={tone} title={title}>
+      {label}
+    </Badge>
+  );
+}

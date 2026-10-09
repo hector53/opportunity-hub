@@ -79,6 +79,8 @@ export const riskTypeEnum = pgEnum("risk_type", [
   "unpaid_assessment",
 ]);
 
+export const geoEligibilityEnum = pgEnum("geo_eligibility", ["eligible", "ineligible", "needs_review"]);
+
 export const riskSeverityEnum = pgEnum("risk_severity", ["info", "warning", "high"]);
 export const riskLevelEnum = pgEnum("risk_level", ["none", "low", "medium", "high"]);
 
@@ -237,6 +239,8 @@ export const opportunities = pgTable(
     commercialFit: integer("commercial_fit"),
     practicalFit: integer("practical_fit"),
     overallScore: integer("overall_score"),
+    scoreConfidence: confidenceEnum("score_confidence"),
+    geoEligibility: geoEligibilityEnum("geo_eligibility"),
     riskLevel: riskLevelEnum("risk_level").notNull().default("none"),
     scoredAt: timestamp("scored_at", { withTimezone: true }),
 
@@ -249,6 +253,7 @@ export const opportunities = pgTable(
     index("opportunities_source_idx").on(t.sourceKey),
     index("opportunities_published_idx").on(t.publishedAt),
     index("opportunities_score_idx").on(t.overallScore),
+    index("opportunities_eligibility_idx").on(t.geoEligibility),
   ],
 );
 

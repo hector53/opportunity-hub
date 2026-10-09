@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Bookmark, Eye, FileText, Trash2, X } from "lucide-react";
-import { Badge, DemoBadge, RiskBadge, ScorePill } from "@/components/ui";
+import { Badge, ConfidenceBadge, DemoBadge, EligibilityBadge, RiskBadge, ScorePill } from "@/components/ui";
 import { ExternalAction } from "@/components/external-action";
 import { SubmitButton } from "@/components/submit-button";
 import { CLIENT_TYPE_LABEL, ENGAGEMENT_LABEL, fmtDate, fmtMoney, OPP_STATUS_LABEL, SOURCE_LABEL } from "@/lib/format";
@@ -15,6 +15,8 @@ const GROUPS: { key: keyof OpportunityFilters; label: string; options: [string, 
   { key: "status", label: "Estado", options: Object.entries(OPP_STATUS_LABEL) },
   { key: "language", label: "Idioma", options: [["es", "Español"], ["en", "Inglés"], ["pt", "Portugués"], ["unknown", "Unknown"]] },
   { key: "risk", label: "Riesgo", options: [["none", "Sin alertas"], ["low", "Bajo"], ["medium", "Medio"], ["high", "Alto"]] },
+  { key: "eligibility", label: "Elegibilidad", options: [["eligible", "Elegible"], ["needs_review", "Revisar ubicación"], ["ineligible", "No elegible"], ["unknown", "Sin calcular"]] },
+  { key: "confidence", label: "Confianza", options: [["high", "Alta"], ["medium", "Media"], ["low", "Baja"]] },
 ];
 
 function CheckGroup({ name, label, options, selected }: { name: string; label: string; options: [string, string][]; selected: string[] }) {
@@ -36,7 +38,7 @@ function CheckGroup({ name, label, options, selected }: { name: string; label: s
   );
 }
 
-export function FiltersBar({ f }: { f: OpportunityFilters }) {
+export function FiltersBar({ f, currency }: { f: OpportunityFilters; currency: string }) {
   return (
     <form method="get" action="/opportunities" className="card mb-3 flex flex-col gap-2 p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -48,8 +50,12 @@ export function FiltersBar({ f }: { f: OpportunityFilters }) {
           <summary className="btn btn-sm cursor-pointer list-none">Más filtros</summary>
           <div className="absolute z-30 mt-1 grid w-72 gap-2 rounded-md border border-line-strong bg-surface-2 p-3 shadow-xl">
             <label className="text-xs text-muted">
-              Tarifa mínima (USD/h aprox.)
+              Tarifa mínima ({currency}/h aprox.)
               <input name="minBudget" type="number" min={0} defaultValue={f.minBudget} className="input mt-1" />
+            </label>
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input type="checkbox" name="recommended" value="1" defaultChecked={!!f.recommended} className="accent-accent" />
+              Sólo recomendadas (score ≥ 70, confianza media/alta, elegible, sin riesgo alto)
             </label>
             <label className="text-xs text-muted">
               Score mínimo
@@ -93,7 +99,7 @@ export function FiltersBar({ f }: { f: OpportunityFilters }) {
         </Link>
       </div>
       <p className="text-[11px] text-subtle">
-        La tarifa mínima convierte salarios mensuales/anuales a USD/h (160 h/mes). Presupuestos fijos o en otra moneda quedan fuera del filtro.
+        La tarifa mínima convierte salarios mensuales/anuales a {currency}/h (160 h/mes). Presupuestos fijos, sin moneda o en otra moneda quedan fuera del filtro (no hay conversión implícita).
       </p>
     </form>
   );
@@ -204,12 +210,18 @@ export function OpportunitiesTable({ rows }: { rows: OpportunityRow[] }) {
                 <div className="text-muted">
                   {r.remote === true ? "Remoto" : r.remote === false ? "Presencial" : "Remoto ?"} · {r.language?.toUpperCase() ?? "?"}
                 </div>
+                <div className="mt-1">
+                  <EligibilityBadge value={r.geoEligibility} />
+                </div>
               </td>
               <td className="text-xs whitespace-nowrap tabular-nums">{fmtMoney(r.budgetMin, r.budgetMax, r.budgetCurrency, r.budgetPeriod)}</td>
               <td className="text-xs">{ENGAGEMENT_LABEL[r.engagementType]}</td>
               <td className="text-xs whitespace-nowrap text-muted">{fmtDate(r.publishedAt ?? r.createdAt)}</td>
               <td>
                 <ScorePill value={r.overallScore} label="Total" />
+                <div className="mt-1">
+                  <ConfidenceBadge value={r.scoreConfidence} compact />
+                </div>
               </td>
               <td>
                 <ScorePill value={r.techFit} />
