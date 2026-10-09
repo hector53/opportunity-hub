@@ -22,12 +22,13 @@ Checking several job platforms by hand takes a lot of time, and most "auto-apply
 |---|---|
 | **Sources** | Real sync with the [Get on Board](https://www.getonbrd.com) public API (manual and scheduled), with run history and errors. Manual import (text + link) for Workana, Upwork or any other source. Adapters for the official Upwork API and for Gmail are prepared but not connected yet |
 | **Normalization & de-dup** | Idempotent ingestion. Identity is the external id, then the canonical URL, then a content hash. Cross-source look-alikes are flagged, never merged silently. Every field records where it came from: **source**, **manual** or **inferred** |
-| **Explainable scoring** | Four separate scores (Technology/Job, Client, Commercial, Practical), each with reasons and evidence snippets. Missing data shows as **Unknown** instead of a guess. Weights are configurable and no sensitive personal attributes are used |
-| **Security Gate** | Static, text-only checks for external repos or ZIPs, executable take-home tests, unusual links, crypto/wallet requests, credential requests, off-platform payment, prompt injection and unreasonable unpaid assessments. It never clones, installs or runs third-party code |
+| **Explainable scoring** | Four separate scores (Technology/Job, Client, Commercial, Practical), each with reasons and evidence snippets. Missing data shows as **Unknown** instead of a guess. A **confidence level** (high/medium/low) says how much of the score rests on known data, and only medium/high-confidence, eligible, non-high-risk items are ever *recommended*. Budgets are never converted between currencies implicitly. Weights are configurable and no sensitive personal attributes are used |
+| **Geographic eligibility** | Distinguishes fully remote, remote-restricted (`remote_local`), hybrid and onsite work. The result is `eligible`, `ineligible` (explicit evidence only) or `needs_review` (insufficient information is never treated as incompatible), and it is computed against the location in your profile |
+| **Security Gate** | Static checks on text **and URLs** (the original link and links inside notifications): external repos or ZIPs, executable take-home tests, unusual links (raw IPs, punycode, shorteners, executables, embedded credentials, a domain that doesn't match the platform), crypto/wallet requests, credential requests, off-platform payment, prompt injection and unreasonable unpaid assessments. URLs are parsed, never fetched. It never clones, installs or runs third-party code |
 | **Pipeline** | Saved → Draft → Applied → Replied → Interview → Offer → Hired (plus Rejected, Withdrawn and Archived). Transitions are validated, with history, comments, follow-ups and rates |
 | **Proposal Copilot** | Optional LLM drafting via OpenRouter, server-side, with caching, a daily budget, timeouts and JSON validation. Without a key it falls back to a clearly labelled template and **never fakes AI output**. Drafts are versioned and can be copied |
 | **Inbox** | Paste notifications to classify them, link them to applications and scan them for risks. Messages are marked as partial and always keep a link to the original conversation |
-| **Experiments** | Response, interview and hire funnels per variant and per segment (source, language, client type, rate…), with small-sample warnings. It never auto-tunes your strategy |
+| **Experiments** | Response, interview and hire funnels per variant and per segment (source, language, client type, rate…), computed from **status-history milestones**: a later rejection doesn't erase an earlier interview. Includes small-sample warnings and never auto-tunes your strategy |
 | **Today's Priorities** | Replies to answer, due follow-ups, interviews, approved proposals not yet sent and the best new opportunities |
 
 ## Screenshots
@@ -123,12 +124,17 @@ npm run dev                      # http://127.0.0.1:3100
 | `APP_PASSWORD` | ✓* | Plain-text alternative (10+ characters). *One of the two is required |
 | `COOKIE_SECURE` | | `true` only when served over HTTPS |
 | `AUTH_DISABLED` | | Local development only. The app **refuses to start** with it in production |
+| `TRUST_PROXY` | | `true` only behind a reverse proxy you control; otherwise forwarding headers are ignored ([docs/SECURITY.md](docs/SECURITY.md)) |
 | `SCHEDULER_ENABLED` | | `false` disables scheduled syncs |
 | `OPENROUTER_API_KEY` | | Enables AI proposal drafting (server-side only) |
 | `APP_HOST_PORT` / `DB_HOST_PORT` | | Host ports (defaults `3100` / `5434`) |
 | `PROFILE_FILE` | | Path to a private profile JSON loaded by the first seed (default `config/profile.local.json`, git-ignored) |
 
 Your professional profile (skills, verifiable experiences, rates, languages), the scoring weights, the AI model and the sync queries are all **editable data in Settings**, not hardcoded rules.
+
+## Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, typecheck, unit tests, a production build and a migration drift check on every pull request and on every push to `main`. It uses a read-only token, needs no secrets and no database.
 
 ## Testing
 
@@ -145,7 +151,7 @@ E2E_PASSWORD=... npm run test:e2e   # Playwright against a running instance; als
 - **No external actions without explicit approval.** "Apply" opens the original site after a confirmation that shows the exact destination. Opportunity Hub never submits anything.
 - **Untrusted content is data.** Job posts, emails and pasted text are rendered as plain text, scanned for prompt-injection patterns and wrapped in delimiters before any LLM call. The model has no tools and cannot trigger actions.
 - **No third-party code execution.** Repositories, ZIPs and attachments from employers are never cloned, downloaded, installed, built or opened.
-- **Single-user auth:** scrypt password hash, HMAC-signed `httpOnly` / `SameSite=Strict` cookie, login throttling, a session check on every route and in every server action, and production start-up checks.
+- **Single-user auth:** scrypt password hash, HMAC-signed `httpOnly` / `SameSite=Strict` cookie, failed-login throttling (per client and global), safe post-login redirects, forwarding headers ignored unless `TRUST_PROXY=true`, a session check on every route and in every server action, CSP and security headers, and production start-up checks. See [docs/SECURITY.md](docs/SECURITY.md) before any public deployment.
 - **Secrets stay out of the repository.** Platform passwords (Upwork, Workana, Get on Board) are never stored.
 
 ## Integrations & platform terms
