@@ -18,7 +18,7 @@ describe("application state machine", () => {
   });
 });
 
-import { funnel, rateBucket } from "@/features/experiments/stats";
+import { funnel, milestones, rateBucket } from "@/features/experiments/stats";
 
 describe("experiment funnel", () => {
   it("only counts sent applications and flags small samples", () => {
@@ -43,5 +43,29 @@ describe("experiment funnel", () => {
   it("buckets hourly rates", () => {
     expect(rateBucket(35, "hour")).toBe("$30–39/h");
     expect(rateBucket(2000, "fixed")).toBe("sin tarifa/h");
+  });
+});
+
+describe("milestone-based conversions", () => {
+  it("keeps earlier conversions when an application is later rejected", () => {
+    const m = milestones({ status: "rejected", reached: ["draft", "applied", "replied", "interview", "rejected"] });
+    expect(m).toEqual({ sent: true, responded: true, interviewed: true, hired: false });
+  });
+  it("counts the funnel from history, not from the current status", () => {
+    const rows = funnel(
+      [
+        { status: "rejected", reached: ["applied", "interview", "rejected"], v: "A" },
+        { status: "archived", reached: ["applied", "replied", "interview", "offer", "hired", "archived"], v: "A" },
+        { status: "applied", reached: ["applied"], v: "A" },
+        { status: "draft", reached: ["draft"], v: "A" },
+      ],
+      (x) => x.v,
+    );
+    expect(rows[0]).toMatchObject({ sent: 3, responses: 2, interviews: 2, hired: 1 });
+  });
+  it("falls back to current status and appliedAt without history", () => {
+    expect(milestones({ status: "interview" })).toMatchObject({ sent: true, responded: true, interviewed: true });
+    expect(milestones({ status: "withdrawn", appliedAt: new Date() }).sent).toBe(true);
+    expect(milestones({ status: "saved" }).sent).toBe(false);
   });
 });
