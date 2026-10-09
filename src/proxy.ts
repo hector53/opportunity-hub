@@ -17,5 +17,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!login|api/health|_next/static|_next/image|favicon.ico|icon.svg).*)"],
+  // Exact exclusions only ("/login", "/api/health" and static assets); "/loginx" etc. stay protected.
+  matcher: ["/((?!login(?:/|$)|api/health(?:/|$)|_next/static/|_next/image|favicon\\.ico$|icon\\.svg$).*)"],
 };
