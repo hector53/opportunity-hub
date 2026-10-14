@@ -32,12 +32,14 @@ export const SOURCE_DEFINITIONS: SourceDefinition[] = [
     defaultStatus: "pending_credentials",
     homepageUrl: "https://www.upwork.com",
     description:
-      "Adapter preparado para la API oficial (OAuth 2.0 + GraphQL). Requiere una API key aprobada por Upwork. Mientras tanto: importación manual y (M1) notificaciones por email.",
-    capabilities: ["Importación manual de texto/enlace", "Abrir la oportunidad original"],
+      "MCP oficial verificado con OAuth: permite descubrir vacantes con búsqueda read-only. Opportunity Hub todavía necesita su propio cliente OAuth; no reutiliza la sesión de Codex.",
+    capabilities: ["Búsqueda oficial read-only (MCP)", "Importación manual de texto/enlace", "Abrir la oportunidad original"],
     limitations: [
-      "Sin credenciales aprobadas no hay sincronización.",
+      "El conector propio aún no está autenticado; la sesión de Codex no se comparte con el backend.",
+      "No se exponen herramientas de propuestas, mensajes, Connects, guardado ni cambios de perfil.",
+      "El MCP no publica todavía límites de tasa ni retención específicos en su documentación de herramienta.",
       "Nunca scraping autenticado ni uso de cookies de sesión.",
-      "Un MCP conectado a otra app (p. ej. tu cliente de IA) no es utilizable desde este backend.",
+      "La persistencia de contenido de Upwork queda pendiente de confirmar contra los términos API/MCP.",
     ],
   },
   {
@@ -45,9 +47,9 @@ export const SOURCE_DEFINITIONS: SourceDefinition[] = [
     name: "Workana",
     defaultStatus: "manual",
     homepageUrl: "https://www.workana.com",
-    description: "Sin API oficial conocida. Importación manual y (M1) detección por notificaciones de email.",
-    capabilities: ["Importación manual de texto/enlace", "Registro manual de aplicaciones"],
-    limitations: ["Sin scrapers, crawlers ni automatización de navegador."],
+    description: "No hay una API/MCP público documentado para descubrir proyectos. La vía autorizada de bajo riesgo es importación manual y alertas oficiales por email.",
+    capabilities: ["Importación manual de texto/enlace", "Alertas oficiales por email como entrada futura", "Registro manual de aplicaciones"],
+    limitations: ["Sin scrapers, crawlers, endpoints internos ni automatización de navegador sin autorización escrita de Workana."],
   },
   {
     key: "email",

@@ -1,22 +1,20 @@
 import type { Connector, ConnectorStatus } from "../types";
 
 /**
- * Upwork official API adapter (prepared, NOT connected).
+ * Upwork official connector status (MCP PoC verified, backend NOT connected).
  *
  * Verified facts (2026-10):
  *  - Upwork's API is GraphQL over OAuth 2.0 (authorization code grant), endpoint
- *    https://api.upwork.com/graphql. Keys are requested per account and scoped; approval is
- *    manual and can take ~2 weeks. Upwork states the API is not for commercial use.
- *  - Upwork's MCP server is authorized per user/client app. An MCP connection that exists in
- *    another application (e.g. an AI chat client) cannot be reused from this backend.
+ *    https://api.upwork.com/graphql. Keys are requested per account and scoped.
+ *  - The official MCP server is a separate OAuth client connection. Codex's client metadata,
+ *    callback and token must never be copied into this application.
  *
- * Until credentials are approved and configured, this adapter reports `pending_credentials`
- * and the app relies on manual import + (M1) email notifications. Never scrape authenticated
- * pages or reuse session cookies.
+ * Until Opportunity Hub has its own OAuth client and the Upwork data-retention terms are
+ * confirmed for durable storage, this adapter reports `pending_credentials`. Never scrape
+ * authenticated pages or reuse session cookies.
  *
- * M1 plan: implement OAuth callback at /api/connectors/upwork/callback, store refresh token
- * encrypted at rest, and read-only queries for job search and the user's own proposals/rooms.
- * Respect Upwork's data retention/redistribution terms (store minimal fields, keep link to source).
+ * Next implementation step: an app-owned OAuth + PKCE flow and a read-only MCP allowlist for
+ * `list_accounts` and `find_jobs`. Do not expose proposal/message/Connects tools to the agent.
  */
 export const UPWORK_GRAPHQL_ENDPOINT = "https://api.upwork.com/graphql";
 
