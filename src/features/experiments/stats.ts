@@ -1,4 +1,4 @@
-import { STATUSES_COUNTED_AS_INTERVIEW, STATUSES_COUNTED_AS_RESPONSE, STATUSES_COUNTED_AS_SENT, type ApplicationStatus } from "@/features/applications/state-machine";
+import { STATUSES_COUNTED_AS_INTERVIEW, STATUSES_COUNTED_AS_RESPONSE, STATUSES_COUNTED_AS_SENT } from "@/features/applications/state-machine";
 
 export interface FunnelRow {
   key: string;
@@ -16,20 +16,53 @@ export const MIN_SAMPLE = 10;
 
 const rate = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
 
-/** Funnel per group. Only applications actually sent count as denominator. */
-export function funnel<T extends { status: string }>(items: T[], keyOf: (x: T) => string): FunnelRow[] {
-  const groups = new Map<string, T[]>();
+export interface ApplicationHistory {
+  /** Current status. */
+  status: string;
+  /** Every status the application ever reached (from application_events.to_status). */
+  reached?: string[];
+  appliedAt?: Date | null;
+}
+
+export interface Milestones {
+  sent: boolean;
+  responded: boolean;
+  interviewed: boolean;
+  hired: boolean;
+}
+
+const hits = (set: readonly string[], states: Set<string>) => set.some((s) => states.has(s));
+
+/**
+ * Conversions are milestones, not current state: an application that reached Interview and was
+ * later Rejected still counts as sent, responded and interviewed. Falls back to the current status
+ * (and applied date) when there's no recorded history.
+ */
+export function milestones(a: ApplicationHistory): Milestones {
+  const states = new Set([a.status, ...(a.reached ?? [])]);
+  return {
+    sent: Boolean(a.appliedAt) || hits(STATUSES_COUNTED_AS_SENT, states),
+    responded: hits(STATUSES_COUNTED_AS_RESPONSE, states),
+    interviewed: hits(STATUSES_COUNTED_AS_INTERVIEW, states),
+    hired: states.has("hired"),
+  };
+}
+
+/** Funnel per group. Only applications that were actually sent count as denominator. */
+export function funnel<T extends ApplicationHistory>(items: T[], keyOf: (x: T) => string): FunnelRow[] {
+  const groups = new Map<string, Milestones[]>();
   for (const it of items) {
-    if (!STATUSES_COUNTED_AS_SENT.includes(it.status as ApplicationStatus)) continue;
+    const m = milestones(it);
+    if (!m.sent) continue;
     const k = keyOf(it);
-    groups.set(k, [...(groups.get(k) ?? []), it]);
+    groups.set(k, [...(groups.get(k) ?? []), m]);
   }
   return [...groups.entries()]
     .map(([key, list]) => {
       const sent = list.length;
-      const responses = list.filter((x) => STATUSES_COUNTED_AS_RESPONSE.includes(x.status as ApplicationStatus)).length;
-      const interviews = list.filter((x) => STATUSES_COUNTED_AS_INTERVIEW.includes(x.status as ApplicationStatus)).length;
-      const hired = list.filter((x) => x.status === "hired").length;
+      const responses = list.filter((m) => m.responded).length;
+      const interviews = list.filter((m) => m.interviewed).length;
+      const hired = list.filter((m) => m.hired).length;
       return {
         key,
         sent,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authBypassEnabled, createSessionToken, hashPassword, verifyPassword, verifySessionToken } from "@/server/auth/session";
-import { registerLoginAttempt } from "@/server/auth/rate-limit";
+import { isLoginBlocked, registerLoginFailure, resetLoginThrottle } from "@/server/auth/rate-limit";
 
 describe("auth", () => {
   beforeEach(() => {
@@ -36,10 +36,10 @@ describe("auth", () => {
     expect(authBypassEnabled()).toBe(true);
   });
 
-  it("throttles repeated login attempts", () => {
-    const key = `test-${Math.random()}`;
-    for (let i = 0; i < 5; i++) expect(registerLoginAttempt(key)).toBe(true);
-    expect(registerLoginAttempt(key)).toBe(false);
+  it("throttles repeated failed logins", () => {
+    resetLoginThrottle();
+    for (let i = 0; i < 5; i++) registerLoginFailure("key");
+    expect(isLoginBlocked("key")).toBe(true);
   });
 });
 

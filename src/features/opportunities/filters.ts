@@ -28,7 +28,13 @@ export const opportunityFiltersSchema = z.object({
   status: csv,
   language: csv,
   risk: csv,
-  minBudget: optNum, // normalized USD/hour
+  eligibility: csv,
+  confidence: csv,
+  recommended: z
+    .union([z.literal("1"), z.literal("true"), z.literal(""), z.boolean()])
+    .optional()
+    .transform((v) => v === "1" || v === "true" || v === true || undefined),
+  minBudget: optNum, // approx. hourly rate in the configured currency
   minScore: optNum,
   stack: optStr,
   sector: optStr,

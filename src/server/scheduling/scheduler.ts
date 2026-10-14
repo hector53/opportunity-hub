@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/server/db/client";
 import { getSettings } from "@/server/services/settings";
 import { syncGetOnBoard } from "@/server/connectors/getonboard/sync";
+import { rescoreStale } from "@/server/services/rescore";
 
 const TICK_MS = 5 * 60 * 1000;
 const g = globalThis as unknown as { __ohScheduler?: NodeJS.Timeout };
@@ -10,6 +11,12 @@ const g = globalThis as unknown as { __ohScheduler?: NodeJS.Timeout };
 export function startScheduler() {
   if (g.__ohScheduler) return;
   const tick = async () => {
+    try {
+      const rescored = await rescoreStale();
+      if (rescored) console.log(`[scheduler] re-scored ${rescored} opportunities with the current scoring version`);
+    } catch (e) {
+      console.error("[scheduler] rescore failed", e instanceof Error ? e.message : e);
+    }
     try {
       const settings = await getSettings();
       const cfg = settings.sync.getonboard;

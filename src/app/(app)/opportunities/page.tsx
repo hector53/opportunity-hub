@@ -4,12 +4,15 @@ import { EmptyState, PageHeader } from "@/components/ui";
 import { filtersToSearchParams, parseFilters } from "@/features/opportunities/filters";
 import { listOpportunities, listPresets } from "@/features/opportunities/queries";
 import { FiltersBar, OpportunitiesTable, PresetBar } from "@/features/opportunities/components";
+import { getSettings } from "@/server/services/settings";
 
 export const metadata = { title: "Opportunities · Opportunity Hub" };
 
 export default async function OpportunitiesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const f = parseFilters(await searchParams);
-  const [{ rows, total, page, pageCount }, presets] = await Promise.all([listOpportunities(f), listPresets()]);
+  const settings = await getSettings();
+  const currency = settings.preferences.currency;
+  const [{ rows, total, page, pageCount }, presets] = await Promise.all([listOpportunities(f, currency), listPresets()]);
   const qs = (p: number) => {
     const sp = filtersToSearchParams(f);
     sp.set("page", String(p));
@@ -26,7 +29,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
           </Link>
         }
       />
-      <FiltersBar f={f} />
+      <FiltersBar f={f} currency={currency} />
       <PresetBar f={f} presets={presets.map((p) => ({ id: p.id, name: p.name, query: filtersToSearchParams(p.filters).toString() }))} />
       {rows.length === 0 ? (
         <EmptyState

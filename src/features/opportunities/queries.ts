@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/server/db/client";
 import type { OpportunityFilters } from "./filters";
 
@@ -10,14 +10,35 @@ function likeEscape(s: string) {
   return `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
 
-/** Approximate USD/hour for filtering. Fixed-price, unknown periods and non-USD budgets yield NULL. */
-export const hourlyExpr = sql<number | null>`case when coalesce(${o.budgetCurrency}, 'USD') <> 'USD' then null
+/**
+ * Approximate hourly rate in the configured currency, for filtering/sorting. Fixed-price, unknown
+ * periods and budgets in any other currency (or without currency) yield NULL — no implicit conversion.
+ */
+export const hourlyExpr = (currency: string) => sql<number | null>`case when ${o.budgetCurrency} is distinct from ${currency.toUpperCase()} then null
   when ${o.budgetPeriod} = 'hour' then coalesce(${o.budgetMax}, ${o.budgetMin})
   when ${o.budgetPeriod} = 'month' then coalesce(${o.budgetMax}, ${o.budgetMin}) / 160.0
   when ${o.budgetPeriod} = 'year' then coalesce(${o.budgetMax}, ${o.budgetMin}) / 1920.0
   else null end`;
 
-export function buildWhere(f: OpportunityFilters): SQL | undefined {
+export const RECOMMENDED_MIN_SCORE = 70;
+
+/**
+ * Single definition of "recommended", shared by the dashboard count, its list and the table filter:
+ * open status, score ≥ 70 with Technology known, confidence medium/high, not geographically
+ * ineligible, and no high risk. Low-confidence scores are never presented as a confirmed fit.
+ */
+export function recommendedWhere(): SQL {
+  return and(
+    inArray(o.status, ["new", "reviewing"]),
+    gte(o.overallScore, RECOMMENDED_MIN_SCORE),
+    isNotNull(o.techFit),
+    inArray(o.scoreConfidence, ["high", "medium"]),
+    sql`${o.geoEligibility} is distinct from 'ineligible'`,
+    ne(o.riskLevel, "high"),
+  )!;
+}
+
+export function buildWhere(f: OpportunityFilters, currency = "USD"): SQL | undefined {
   const c: (SQL | undefined)[] = [];
   if (f.q) {
     const p = likeEscape(f.q);
@@ -33,7 +54,13 @@ export function buildWhere(f: OpportunityFilters): SQL | undefined {
     c.push(or(langs.length ? inArray(o.language, langs) : undefined, f.language.includes("unknown") ? isNull(o.language) : undefined));
   }
   if (f.risk.length) c.push(inArray(o.riskLevel, f.risk as (typeof o.riskLevel.enumValues)[number][]));
-  if (f.minBudget != null) c.push(sql`${hourlyExpr} >= ${f.minBudget}`);
+  if (f.minBudget != null) c.push(sql`${hourlyExpr(currency)} >= ${f.minBudget}`);
+  if (f.recommended) c.push(recommendedWhere());
+  if (f.eligibility.length) {
+    const vals = f.eligibility.filter((v) => v !== "unknown") as (typeof o.geoEligibility.enumValues)[number][];
+    c.push(or(vals.length ? inArray(o.geoEligibility, vals) : undefined, f.eligibility.includes("unknown") ? isNull(o.geoEligibility) : undefined));
+  }
+  if (f.confidence.length) c.push(inArray(o.scoreConfidence, f.confidence as (typeof o.scoreConfidence.enumValues)[number][]));
   if (f.minScore != null) c.push(gte(o.overallScore, f.minScore));
   if (f.stack) {
     const terms = f.stack.split(/[,\s]+/).filter(Boolean);
@@ -47,21 +74,21 @@ export function buildWhere(f: OpportunityFilters): SQL | undefined {
   return and(...c.filter(Boolean));
 }
 
-function orderBy(f: OpportunityFilters) {
+function orderBy(f: OpportunityFilters, currency: string) {
   switch (f.sort) {
     case "published":
       return [sql`coalesce(${o.publishedAt}, ${o.createdAt}) desc`];
     case "created":
       return [desc(o.createdAt)];
     case "budget":
-      return [sql`${hourlyExpr} desc nulls last`];
+      return [sql`${hourlyExpr(currency)} desc nulls last`];
     default:
       return [sql`${o.overallScore} desc nulls last`, desc(o.createdAt)];
   }
 }
 
-export async function listOpportunities(f: OpportunityFilters) {
-  const where = buildWhere(f);
+export async function listOpportunities(f: OpportunityFilters, currency = "USD") {
+  const where = buildWhere(f, currency);
   const page = Math.max(1, Math.floor(f.page ?? 1));
   const [rows, [{ total }]] = await Promise.all([
     db
@@ -86,6 +113,8 @@ export async function listOpportunities(f: OpportunityFilters) {
         commercialFit: o.commercialFit,
         practicalFit: o.practicalFit,
         overallScore: o.overallScore,
+        scoreConfidence: o.scoreConfidence,
+        geoEligibility: o.geoEligibility,
         riskLevel: o.riskLevel,
         status: o.status,
         isDemo: o.isDemo,
@@ -95,7 +124,7 @@ export async function listOpportunities(f: OpportunityFilters) {
       })
       .from(o)
       .where(where)
-      .orderBy(...orderBy(f))
+      .orderBy(...orderBy(f, currency))
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE),
     db.select({ total: sql<number>`count(*)::int` }).from(o).where(where),

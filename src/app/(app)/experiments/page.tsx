@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/server/db/client";
 import { Badge, Card, EmptyState, Notice, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -65,11 +65,20 @@ export default async function ExperimentsPage() {
         engagementType: o.engagementType,
         sector: o.sector,
         tags: o.tags,
+        appliedAt: a.appliedAt,
+        id: a.id,
       })
       .from(a)
       .innerJoin(o, eq(o.id, a.opportunityId)),
   ]);
-  const real = apps.filter((x) => !x.isDemo);
+  // Status history per application: conversions are milestones, so a later rejection doesn't erase them.
+  const events = await db
+    .select({ applicationId: schema.applicationEvents.applicationId, toStatus: schema.applicationEvents.toStatus })
+    .from(schema.applicationEvents)
+    .where(isNotNull(schema.applicationEvents.toStatus));
+  const reachedBy = new Map<string, string[]>();
+  for (const e of events) reachedBy.set(e.applicationId, [...(reachedBy.get(e.applicationId) ?? []), e.toStatus!]);
+  const real = apps.filter((x) => !x.isDemo).map((x) => ({ ...x, reached: reachedBy.get(x.id) ?? [] }));
   const segments: { label: string; key: (x: (typeof real)[number]) => string }[] = [
     { label: "Fuente", key: (x) => SOURCE_LABEL[x.sourceKey] ?? x.sourceKey },
     { label: "Idioma", key: (x) => (x.appLanguage ?? x.language ?? "unknown").toUpperCase() },
@@ -84,7 +93,7 @@ export default async function ExperimentsPage() {
       <PageHeader title="Experiments" description="Compara estrategias de búsqueda y propuesta. Asigna aplicaciones a una variante desde su tarjeta de Aplicación." />
       <div className="mb-4">
         <Notice tone="warn">
-          Las tasas describen tus datos; no prueban causalidad. Con menos de {MIN_SAMPLE} aplicaciones por grupo los resultados no son concluyentes, y la estrategia nunca se ajusta automáticamente. Los registros Demo se excluyen.
+          Las tasas describen tus datos; no prueban causalidad. Las conversiones se cuentan por hitos alcanzados (historial de estados): una aplicación que llegó a entrevista y luego fue rechazada conserva su respuesta y su entrevista. Con menos de {MIN_SAMPLE} aplicaciones por grupo los resultados no son concluyentes, y la estrategia nunca se ajusta automáticamente. Los registros Demo se excluyen.
         </Notice>
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">

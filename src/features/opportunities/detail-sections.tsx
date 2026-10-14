@@ -1,11 +1,11 @@
 import { AlertTriangle, ShieldAlert } from "lucide-react";
-import { Badge, Card, ProvenanceTag, ScorePill, scoreTone } from "@/components/ui";
+import { Badge, Card, ConfidenceBadge, EligibilityBadge, ProvenanceTag, ScorePill, scoreTone } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { CopyButton } from "@/components/copy-button";
 import { cn } from "@/lib/cn";
 import { CLIENT_TYPE_LABEL, ENGAGEMENT_LABEL, fmtDate, fmtMoney, SOURCE_LABEL } from "@/lib/format";
 import { RISK_ADVICE, RISK_LABELS, type RiskType } from "@/server/security/risk-rules";
-import type { DimensionResult, ScoreReasons } from "@/server/scoring/types";
+import type { Dimension, DimensionResult } from "@/server/scoring/types";
 import type { FieldProvenance } from "@/server/normalization/types";
 import { allowedTransitions, STATUS_LABELS, type ApplicationStatus } from "@/features/applications/state-machine";
 import { addApplicationCommentAction, createApplicationAction, moveApplicationAction, updateApplicationAction } from "@/features/applications/actions";
@@ -15,7 +15,7 @@ import type { getOpportunityDetail } from "./queries";
 
 type Detail = NonNullable<Awaited<ReturnType<typeof getOpportunityDetail>>>;
 
-const DIMENSIONS: { key: keyof Omit<ScoreReasons, "overallNote">; label: string; help: string }[] = [
+const DIMENSIONS: { key: Dimension; label: string; help: string }[] = [
   { key: "tech", label: "Technology / Job Fit", help: "Encaje técnico y capacidad de entrega" },
   { key: "client", label: "Client Fit", help: "Tipo de cliente y potencial de relación" },
   { key: "commercial", label: "Commercial Fit", help: "Tarifa, duración, recurrencia y claridad" },
@@ -84,7 +84,27 @@ export function ScoresCard({ d }: { d: Detail }) {
     >
       {reasons ? (
         <div className="space-y-2">
-          <p className="text-xs text-muted">{reasons.overallNote}</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ConfidenceBadge value={d.opp.scoreConfidence} />
+            <EligibilityBadge value={d.opp.geoEligibility} />
+          </div>
+          <p className="text-xs text-muted">
+            {reasons.overallNote} {reasons.confidenceNote ?? ""}
+          </p>
+          {reasons.eligibility ? (
+            <details className="rounded-md border border-line bg-bg/40" open={reasons.eligibility.status !== "eligible"}>
+              <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Elegibilidad geográfica · {reasons.eligibility.workMode}</summary>
+              <ul className="space-y-1.5 border-t border-line px-3 py-2 text-xs">
+                {reasons.eligibility.reasons.map((r, i) => (
+                  <li key={i}>
+                    {r.text}
+                    {r.evidence ? <span className="mt-0.5 block font-mono text-[11px] break-words text-subtle">“{r.evidence}”</span> : null}
+                  </li>
+                ))}
+                {reasons.eligibility.status === "needs_review" ? <li className="text-subtle">Sin información suficiente: no se declara incompatibilidad.</li> : null}
+              </ul>
+            </details>
+          ) : null}
           {DIMENSIONS.map((dim) => (
             <DimensionBlock key={dim.key} label={dim.label} help={dim.help} d={reasons[dim.key]} />
           ))}

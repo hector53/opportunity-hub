@@ -142,6 +142,111 @@ export function riskLevelFor(findings: Pick<RiskFinding, "severity">[]): RiskLev
   return "low";
 }
 
+// ---------- URL analysis (static: URLs are parsed, never fetched or opened) ----------
+
+const PLATFORM_HOSTS: Record<string, string[]> = {
+  upwork: ["upwork.com"],
+  workana: ["workana.com"],
+  getonboard: ["getonbrd.com", "getonboard.com"],
+};
+const SHORTENER_HOSTS = ["bit.ly", "tinyurl.com", "t.co", "goo.gl", "is.gd", "rb.gy", "cutt.ly", "shorturl.at", "ow.ly", "buff.ly", "t.ly", "s.id"];
+const REPO_HOSTS = ["github.com", "gitlab.com", "bitbucket.org", "raw.githubusercontent.com", "gist.github.com"];
+const FILE_SHARE_HOSTS = ["drive.google.com", "docs.google.com", "dropbox.com", "wetransfer.com", "we.tl", "mega.nz", "mediafire.com"];
+const EXECUTABLE_EXT = /\.(exe|msi|dmg|pkg|scr|bat|cmd|ps1|apk|jar|vbs|iso|sh|app|deb|rpm)$/i;
+const ARCHIVE_EXT = /\.(zip|rar|7z|tar|tgz|gz|bz2|xz)$/i;
+
+const hostMatches = (host: string, domains: string[]) => domains.some((d) => host === d || host.endsWith(`.${d}`));
+
+export interface UrlContext {
+  /** Where the URL came from, shown in the evidence (e.g. "originalUrl", "mensaje"). */
+  field: string;
+  /** When set, the URL is expected to belong to this platform's domain. */
+  expectedSource?: string | null;
+}
+
+/** Static analysis of a single URL. Never resolves DNS, follows redirects or downloads anything. */
+export function analyzeUrl(raw: string | null | undefined, ctx: UrlContext): RiskFinding[] {
+  if (!raw || !raw.trim()) return [];
+  const value = raw.trim();
+  const ev = (detail: string) => `${ctx.field}: ${value.length > 160 ? `${value.slice(0, 159)}…` : value} — ${detail}`;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return [{ type: "unusual_links", severity: "warning", rule: "url-unparseable", evidence: ev("URL no válida") }];
+  }
+  const out: RiskFinding[] = [];
+  const push = (type: RiskType, severity: RiskSeverity, rule: string, detail: string) => out.push({ type, severity, rule, evidence: ev(detail) });
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    push("unusual_links", "high", "url-scheme", `esquema no permitido (${url.protocol})`);
+    return out;
+  }
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  const path = decodeURIComponent(url.pathname).toLowerCase();
+
+  if (url.protocol === "http:") push("unusual_links", "info", "url-insecure-http", "usa http sin cifrar");
+  if (url.username || url.password) push("unusual_links", "warning", "url-embedded-credentials", "incluye usuario/contraseña en la URL");
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.startsWith("[")) push("unusual_links", "high", "url-raw-ip", "apunta a una IP en lugar de un dominio");
+  if (host.split(".").some((label) => label.startsWith("xn--"))) push("unusual_links", "warning", "url-punycode", "dominio punycode (posible suplantación visual)");
+  if (hostMatches(host, SHORTENER_HOSTS)) push("unusual_links", "warning", "url-shortener", "acortador que oculta el destino real");
+  if (EXECUTABLE_EXT.test(path)) push("unusual_links", "high", "url-executable", "enlaza un archivo ejecutable");
+  else if (ARCHIVE_EXT.test(path)) push("external_repository", "warning", "url-archive", "enlaza un archivo comprimido");
+  if (hostMatches(host, REPO_HOSTS)) push("external_repository", "warning", "url-repository", "enlaza un repositorio de código");
+  if (hostMatches(host, FILE_SHARE_HOSTS)) push("unusual_links", "info", "url-file-share", "enlaza un servicio de archivos compartidos");
+
+  const expected = ctx.expectedSource ? PLATFORM_HOSTS[ctx.expectedSource] : undefined;
+  if (expected && !hostMatches(host, expected)) {
+    push("unusual_links", "warning", "url-platform-mismatch", `el dominio no pertenece a ${expected.join(" / ")}`);
+  }
+  return out;
+}
+
+const TEXT_LINK_EXTRA_RULES = new Set(["url-embedded-credentials", "url-punycode"]);
+
+/** Extracts http(s) URLs from free text (for notification bodies). */
+export function extractUrls(text: string, max = 20): string[] {
+  const found = text.match(/\bhttps?:\/\/[^\s<>"'()\[\]{}]+/gi) ?? [];
+  return [...new Set(found.map((u) => u.replace(/[.,;:!?]+$/, "")))].slice(0, max);
+}
+
+/**
+ * Full static analysis of a record: text rules + explicit URL fields + links found in the text.
+ * Platform-domain checks apply only to explicit URL fields (links inside a message may legitimately point elsewhere).
+ */
+export function detectContentRisks(input: { text: string; urls?: { field: string; url: string | null | undefined; expectedSource?: string | null }[]; scanTextLinks?: boolean }): RiskFinding[] {
+  const findings = detectRisks(input.text).filter((f) => f.rule !== "repo-plus-execution");
+  const seen = new Set(findings.map((f) => `${f.rule}|${f.evidence}`));
+  const add = (f: RiskFinding) => {
+    const key = `${f.rule}|${f.evidence}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      findings.push(f);
+    }
+  };
+  for (const u of input.urls ?? []) for (const f of analyzeUrl(u.url, { field: u.field, expectedSource: u.expectedSource })) add(f);
+  if (input.scanTextLinks) {
+    const explicit = new Set((input.urls ?? []).map((u) => u.url?.trim()));
+    // Text rules already cover shorteners, IPs, executables, repos and file shares inside the text;
+    // links found there only add the URL-structure checks the text rules can't see.
+    for (const link of extractUrls(input.text)) {
+      if (explicit.has(link)) continue;
+      for (const f of analyzeUrl(link, { field: "enlace en el texto" })) if (TEXT_LINK_EXTRA_RULES.has(f.rule)) add(f);
+    }
+  }
+  const hasRepo = findings.some((f) => f.type === "external_repository");
+  const hasExec = findings.some((f) => f.type === "executable_test");
+  if (hasRepo && hasExec) {
+    findings.push({
+      type: "executable_test",
+      severity: "high",
+      rule: "repo-plus-execution",
+      evidence: "Combina repositorio/archivo externo con instrucciones de instalar o ejecutar código.",
+    });
+  }
+  return findings;
+}
+
 /** True when content contains text attempting to instruct an AI model. */
 export function looksLikePromptInjection(text: string): boolean {
   return RULES.find((r) => r.id === "prompt-injection")!.re.test(text);

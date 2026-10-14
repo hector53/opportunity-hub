@@ -1,6 +1,7 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, notInArray, sql } from "drizzle-orm";
 import { db, schema } from "@/server/db/client";
 import { SOURCE_LABEL } from "@/lib/format";
+import { recommendedWhere } from "@/features/opportunities/queries";
 
 const o = schema.opportunities;
 const a = schema.applications;
@@ -51,7 +52,7 @@ export async function getDashboard() {
     [newToday],
   ] = await Promise.all([
     db.select({ n: cnt }).from(o).where(eq(o.status, "new")),
-    db.select({ n: cnt }).from(o).where(and(inArray(o.status, ["new", "reviewing"]), gte(o.overallScore, 70), ne(o.riskLevel, "high"))),
+    db.select({ n: cnt }).from(o).where(recommendedWhere()),
     db.select({ n: cnt }).from(a).where(and(gte(a.appliedAt, week), notInArray(a.status, ["saved", "draft"]))),
     db.select({ n: cnt }).from(a).where(eq(a.status, "applied")),
     db.select({ n: cnt }).from(a).where(eq(a.status, "interview")),
@@ -64,9 +65,9 @@ export async function getDashboard() {
       .where(and(gte(a.appliedAt, week), notInArray(a.status, ["saved", "draft"])))
       .groupBy(sql`1`),
     db
-      .select({ id: o.id, title: o.title, sourceKey: o.sourceKey, companyName: o.companyName, overallScore: o.overallScore, riskLevel: o.riskLevel, isDemo: o.isDemo })
+      .select({ id: o.id, title: o.title, sourceKey: o.sourceKey, companyName: o.companyName, overallScore: o.overallScore, scoreConfidence: o.scoreConfidence, geoEligibility: o.geoEligibility, riskLevel: o.riskLevel, isDemo: o.isDemo })
       .from(o)
-      .where(and(inArray(o.status, ["new", "reviewing"]), isNotNull(o.overallScore), ne(o.riskLevel, "high")))
+      .where(recommendedWhere())
       .orderBy(desc(o.overallScore), desc(o.createdAt))
       .limit(6),
     db

@@ -1,9 +1,10 @@
 import type { AppSettings } from "@/features/settings/types";
 import { containsTerm, snippetAround, toHourly } from "@/server/normalization/text";
 import type { BudgetPeriod, ClientType, EngagementType } from "@/server/normalization/types";
-import type { DimensionResult, ScoreReason, ScoreResult } from "./types";
+import type { DimensionResult, ScoreConfidence, ScoreReason, ScoreResult } from "./types";
+import { assessEligibility, type GeoEligibility } from "./eligibility";
 
-export const SCORING_VERSION = "det-1.0";
+export const SCORING_VERSION = "det-1.1";
 
 export interface ScoringInput {
   title: string;
@@ -23,6 +24,7 @@ export interface ScoringInput {
   remote: boolean | null;
   remoteModality: string | null;
   countries: string[];
+  location: string | null;
   competitorCount: number | null;
 }
 
@@ -159,23 +161,34 @@ export function scoreCommercial(input: ScoringInput, settings: AppSettings): Dim
   const text = `${input.title}\n${input.description}`;
 
   const amount = input.budgetMax ?? input.budgetMin;
-  const nonUsd = input.budgetCurrency && input.budgetCurrency !== settings.preferences.currency;
-  const hourly = nonUsd ? null : toHourly(amount, input.budgetPeriod);
-  if (hourly != null) {
+  const configured = settings.preferences.currency.toUpperCase();
+  const currency = input.budgetCurrency?.toUpperCase() ?? null;
+  // No implicit conversions: amounts are only compared when they're in the configured currency.
+  const comparable = amount != null && currency === configured;
+  const hourly = comparable ? toHourly(amount, input.budgetPeriod) : null;
+  const money = `${amount ?? "?"} ${currency ?? ""}`.trim();
+  if (amount != null && !comparable) {
+    d.unknown(
+      currency
+        ? `Presupuesto en ${currency}: no se compara con ${configured} (sin conversión implícita)`
+        : `Presupuesto sin moneda declarada: no se compara con ${configured}`,
+    );
+  } else if (hourly != null) {
     signals = true;
-    const ev = `${input.budgetMin ?? "?"}–${input.budgetMax ?? "?"} ${input.budgetCurrency ?? ""}/${input.budgetPeriod} ≈ ${hourly}/h`;
+    const ev = `${input.budgetMin ?? "?"}–${input.budgetMax ?? "?"} ${currency}/${input.budgetPeriod} ≈ ${hourly}/h`;
     if (hourly >= targetHourlyRate) d.add(28, `Tarifa ≥ objetivo (${targetHourlyRate}/h)`, ev);
     else if (hourly >= minHourlyRate) d.add(14, `Tarifa dentro del rango aceptable (≥ ${minHourlyRate}/h)`, ev);
     else if (hourly >= minHourlyRate * 0.7) d.add(-15, `Tarifa por debajo del mínimo (${minHourlyRate}/h)`, ev);
     else d.add(-32, "Tarifa muy por debajo del mínimo", ev);
-  } else if (input.budgetPeriod === "fixed" && amount != null) {
+  } else if (comparable && input.budgetPeriod === "fixed") {
     signals = true;
-    if (amount < 300) d.add(-20, "Presupuesto fijo muy bajo; riesgo de alcance desproporcionado", `${amount} ${input.budgetCurrency ?? ""}`);
-    else if (amount < 1000) d.add(-6, "Presupuesto fijo bajo: verificar alcance", `${amount} ${input.budgetCurrency ?? ""}`);
-    else d.add(6, "Presupuesto fijo razonable", `${amount} ${input.budgetCurrency ?? ""}`);
+    if (amount < 300) d.add(-20, "Presupuesto fijo muy bajo; riesgo de alcance desproporcionado", money);
+    else if (amount < 1000) d.add(-6, "Presupuesto fijo bajo: verificar alcance", money);
+    else d.add(6, "Presupuesto fijo razonable", money);
+  } else if (comparable) {
+    d.unknown(`Presupuesto ${money} sin periodo (hora/mes/fijo)`);
   } else {
-    if (nonUsd && amount != null) d.unknown(`Presupuesto en ${input.budgetCurrency}: sin conversión automática`);
-    else d.unknown("Presupuesto / tarifa");
+    d.unknown("Presupuesto / tarifa");
   }
 
   if (input.engagementType !== "unknown") {
@@ -203,19 +216,7 @@ export function scoreCommercial(input: ScoringInput, settings: AppSettings): Dim
 
 // ---------- Practical fit ----------
 
-const GEO_RESTRICTION_RE =
-  /\b(us[- ]only|usa only|must (be )?(located|based|reside) in (the )?(us|usa|united states|europe|eu|uk|canada)|authorized to work in the (us|united states)|(u\.s\.|us) citizens? only|security clearance|solo residentes en|residir en (chile|m[eé]xico|colombia|per[uú]|argentina|espa[ñn]a)|presencial)\b/i;
-const LATAM_OK_RE = /\b(latam|latin america|latinoam[eé]rica|anywhere|worldwide|cualquier pa[ií]s)\b/i;
-
-/** Location words from the profile (e.g. "Uruguay (remote)" → ["uruguay"]). Nothing is hardcoded. */
-function homeTerms(settings: AppSettings): string[] {
-  return settings.profile.location
-    .toLowerCase()
-    .split(/[^a-záéíóúñ]+/)
-    .filter((w) => w.length > 3 && w !== "remote" && w !== "remoto");
-}
-
-export function scorePractical(input: ScoringInput, settings: AppSettings): DimensionResult {
+export function scorePractical(input: ScoringInput, settings: AppSettings, eligibility = assessEligibility(input, settings)): DimensionResult {
   const d = new Dim(55);
   let signals = false;
   const text = `${input.title}\n${input.description}`;
@@ -233,36 +234,16 @@ export function scorePractical(input: ScoringInput, settings: AppSettings): Dime
   const enLevel = langs.find((x) => x.code === "en")?.level;
   if (fluent && enLevel !== "native" && enLevel !== "fluent") d.add(-12, "Requiere inglés avanzado/nativo", fluent[0]);
 
-  if (input.remote === true) {
+  // Geography comes from the eligibility assessment: only explicit evidence moves the score.
+  const first = eligibility.reasons[0];
+  if (eligibility.status === "eligible") {
     signals = true;
-    d.add(18, "Remoto");
-  } else if (input.remote === false) {
+    d.add(18, `Elegible por ubicación: ${first?.text ?? eligibility.workMode}`, first?.evidence);
+  } else if (eligibility.status === "ineligible") {
     signals = true;
-    d.add(-40, "Presencial / no remoto", input.remoteModality ?? undefined);
-  } else d.unknown("Remoto / presencial");
-
-  if (input.remoteModality === "hybrid") d.add(-30, "Modalidad híbrida", "hybrid");
-  if (input.remoteModality === "remote_local") {
-    d.add(-4, "Remoto con restricción geográfica (remote_local): verificar países admitidos", "remote_local");
-    d.unknown("Países admitidos para remote_local");
-  }
-
-  const geo = text.match(GEO_RESTRICTION_RE);
-  if (geo) {
-    signals = true;
-    d.add(-30, "Posible restricción geográfica incompatible", snippetAround(text, geo.index ?? 0, 50));
-  }
-  const ok = text.match(LATAM_OK_RE) ?? homeTerms(settings).map((h) => text.toLowerCase().match(new RegExp(`\\b${h}\\b`))).find(Boolean) ?? null;
-  if (ok) {
-    signals = true;
-    d.add(8, "Acepta LATAM / cualquier ubicación", ok[0]);
-  }
-  if (input.countries.length) {
-    signals = true;
-    const home = homeTerms(settings);
-    if (input.countries.some((c) => /remote|latam/i.test(c) || home.some((h) => c.toLowerCase().includes(h)))) {
-      d.add(4, "Países listados compatibles", input.countries.join(", "));
-    }
+    d.add(-45, `No elegible por ubicación: ${first?.text ?? eligibility.workMode}`, first?.evidence);
+  } else {
+    d.unknown(`Elegibilidad geográfica por revisar (${first?.text ?? "sin datos"})`);
   }
 
   if (input.hoursPerWeek != null && input.hoursPerWeek > settings.preferences.hoursPerWeekAvailable) {
@@ -276,11 +257,26 @@ export function scorePractical(input: ScoringInput, settings: AppSettings): Dime
 
 // ---------- Aggregate ----------
 
+/**
+ * Confidence reflects how much of the evaluation rests on known data:
+ *  high   = all 4 dimensions known and geographic eligibility resolved
+ *  medium = 3 dimensions known (Technology must be one of them)
+ *  low    = anything less
+ */
+export function confidenceFor(dims: { tech: number | null; client: number | null; commercial: number | null; practical: number | null }, eligibility: GeoEligibility): ScoreConfidence {
+  const known = [dims.tech, dims.client, dims.commercial, dims.practical].filter((v) => v !== null).length;
+  if (dims.tech === null) return "low";
+  if (known === 4 && eligibility !== "needs_review") return "high";
+  if (known >= 3) return "medium";
+  return "low";
+}
+
 export function scoreOpportunity(input: ScoringInput, settings: AppSettings): ScoreResult {
+  const eligibility = assessEligibility(input, settings);
   const tech = scoreTech(input, settings);
   const client = scoreClient(input, settings);
   const commercial = scoreCommercial(input, settings);
-  const practical = scorePractical(input, settings);
+  const practical = scorePractical(input, settings, eligibility);
   const w = settings.scoring.weights;
   const parts: [number | null, number][] = [
     [tech.score, w.tech],
@@ -296,9 +292,16 @@ export function scoreOpportunity(input: ScoringInput, settings: AppSettings): Sc
     overall === null
       ? "Sin información suficiente para calcular un score global."
       : unknownCount >= 2
-        ? `Baja confianza: ${unknownCount} dimensiones sin datos (Unknown) no se incluyen en el promedio.`
+        ? `${unknownCount} dimensiones sin datos (Unknown) no se incluyen en el promedio.`
         : unknownCount === 1
           ? "Una dimensión sin datos (Unknown) se excluye del promedio ponderado."
           : "Promedio ponderado de las cuatro dimensiones.";
-  return { version: SCORING_VERSION, tech, client, commercial, practical, overall, overallNote };
+  const confidence = confidenceFor({ tech: tech.score, client: client.score, commercial: commercial.score, practical: practical.score }, eligibility.status);
+  const confidenceNote =
+    confidence === "high"
+      ? "Confianza alta: las cuatro dimensiones tienen datos y la elegibilidad geográfica está resuelta."
+      : confidence === "medium"
+        ? "Confianza media: falta una dimensión o la elegibilidad geográfica requiere revisión."
+        : "Confianza baja: el score se apoya en poca información; no debe leerse como encaje confirmado.";
+  return { version: SCORING_VERSION, tech, client, commercial, practical, overall, overallNote, confidence, confidenceNote, eligibility };
 }

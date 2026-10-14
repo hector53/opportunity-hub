@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, CalendarClock, CheckCircle2, FileText, Inbox, MessageSquareReply, Search, Send, Timer } from "lucide-react";
-import { Badge, Card, DemoBadge, EmptyState, PageHeader, ScorePill, Stat } from "@/components/ui";
+import { Badge, Card, ConfidenceBadge, DemoBadge, EligibilityBadge, EmptyState, PageHeader, ScorePill, Stat } from "@/components/ui";
 import { fmtDate, relTime, SOURCE_LABEL } from "@/lib/format";
 import { getDashboard, type Priority } from "@/features/dashboard/queries";
 import { getSettings } from "@/server/services/settings";
@@ -30,7 +30,7 @@ export default async function HomePage() {
       <PageHeader title="Home" description={`Hoy, ${fmtDate(new Date())}. Objetivo semanal: ${target} aplicaciones fuertes.`} />
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         <Stat label="Nuevas" value={d.stats.newOpps} hint={`${d.stats.newToday} en 24 h`} href="/opportunities?status=new" />
-        <Stat label="Recomendadas" value={d.stats.recommended} hint="score ≥ 70, sin riesgo alto" href="/opportunities?minScore=70&status=new,reviewing" />
+        <Stat label="Recomendadas" value={d.stats.recommended} hint="score ≥ 70 · confianza media/alta · elegible" href="/opportunities?recommended=1" />
         <Stat label="Enviadas (semana)" value={`${d.stats.sentWeek}/${target}`} hint={esShare === null ? "—" : `${esShare}% ES · meta ${settings.preferences.spanishShare}%`} href="/applications" />
         <Stat label="Esperando respuesta" value={d.stats.awaiting} href="/applications?status=applied" />
         <Stat label="Entrevistas" value={d.stats.interviews} href="/applications?status=interview" />
@@ -75,16 +75,16 @@ export default async function HomePage() {
           </Card>
 
           <Card
-            title="Oportunidades recomendadas"
+            title={d.recommended.length < d.stats.recommended ? `Oportunidades recomendadas (${d.recommended.length} de ${d.stats.recommended})` : `Oportunidades recomendadas (${d.stats.recommended})`}
             actions={
-              <Link href="/opportunities" className="text-xs text-accent hover:underline">
+              <Link href="/opportunities?recommended=1" className="text-xs text-accent hover:underline">
                 Ver todas
               </Link>
             }
             bodyClassName="p-0"
           >
             {d.recommended.length === 0 ? (
-              <p className="p-4 text-sm text-muted">Sin oportunidades nuevas evaluadas.</p>
+              <p className="p-4 text-sm text-muted">Ninguna cumple los criterios (score ≥ 70 con confianza media/alta, elegible y sin riesgo alto). Revisa las de confianza baja en Opportunities.</p>
             ) : (
               <ul className="divide-y divide-line">
                 {d.recommended.map((r) => (
@@ -97,6 +97,8 @@ export default async function HomePage() {
                           {SOURCE_LABEL[r.sourceKey]} · {r.companyName ?? "Unknown"}
                         </span>
                       </span>
+                      <ConfidenceBadge value={r.scoreConfidence} />
+                      {r.geoEligibility === "needs_review" ? <EligibilityBadge value={r.geoEligibility} /> : null}
                       {r.isDemo ? <DemoBadge /> : null}
                     </Link>
                   </li>

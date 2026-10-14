@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db, schema, type Tx } from "@/server/db/client";
 import type { AppSettings } from "@/features/settings/types";
-import { detectRisks, riskLevelFor } from "@/server/security/risk-rules";
+import { detectContentRisks, riskLevelFor } from "@/server/security/risk-rules";
 import { scoreOpportunity } from "./engine";
 
 type Opp = typeof schema.opportunities.$inferSelect;
@@ -28,6 +28,7 @@ export async function rescoreOpportunity(opp: Opp, settings: AppSettings, tx?: T
       remote: opp.remote,
       remoteModality: opp.remoteModality,
       countries: opp.countries,
+      location: opp.location,
       competitorCount: opp.competitorCount,
     },
     settings,
@@ -42,7 +43,11 @@ export async function rescoreOpportunity(opp: Opp, settings: AppSettings, tx?: T
   await conn
     .delete(schema.riskFlags)
     .where(and(eq(schema.riskFlags.opportunityId, opp.id), eq(schema.riskFlags.detectedBy, "rules"), eq(schema.riskFlags.dismissed, false)));
-  const findings = detectRisks(`${opp.title}\n${opp.description}`).filter((f) => !dismissedRules.has(f.rule));
+  const findings = detectContentRisks({
+    text: `${opp.title}\n${opp.description}`,
+    urls: [{ field: "originalUrl", url: opp.originalUrl, expectedSource: opp.sourceKey }],
+    scanTextLinks: true,
+  }).filter((f) => !dismissedRules.has(f.rule));
   if (findings.length) {
     await conn.insert(schema.riskFlags).values(findings.map((f) => ({ ...f, opportunityId: opp.id, detectedBy: "rules" })));
   }
@@ -67,6 +72,9 @@ export async function rescoreOpportunity(opp: Opp, settings: AppSettings, tx?: T
       commercial: result.commercial,
       practical: result.practical,
       overallNote: result.overallNote,
+      confidence: result.confidence,
+      confidenceNote: result.confidenceNote,
+      eligibility: result.eligibility,
     },
   });
   await conn
@@ -77,6 +85,8 @@ export async function rescoreOpportunity(opp: Opp, settings: AppSettings, tx?: T
       commercialFit: result.commercial.score,
       practicalFit: result.practical.score,
       overallScore: result.overall,
+      scoreConfidence: result.confidence,
+      geoEligibility: result.eligibility.status,
       riskLevel,
       scoredAt: new Date(),
     })
