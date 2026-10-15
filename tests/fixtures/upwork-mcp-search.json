@@ -1,0 +1,26 @@
+{
+  "id": "synthetic-upwork-job-001",
+  "title": "[Synthetic] TypeScript product engineer",
+  "description_snippet": "<untrusted_participant_content>Build a small React and TypeScript product with a PostgreSQL backend.</untrusted_participant_content>",
+  "url": "https://www.upwork.com/jobs/~02synthetic001?utm_source=LLM_chatgpt_MCP_jobpost",
+  "budget": "$40.00–60.00/hr",
+  "job_type": "hourly",
+  "experience_level": "expert",
+  "duration": "3 to 6 months",
+  "engagement": "PART_TIME",
+  "skills": ["TypeScript", "React", "PostgreSQL"],
+  "proposals_tier": "Fewer than 5",
+  "freelancers_to_hire": 1,
+  "created_date": "2026-10-14T10:00:00.000Z",
+  "published_date": "2026-10-14T10:00:05.000Z",
+  "applied": false,
+  "featured": false,
+  "client": {
+    "country": "Synthetic country",
+    "rating": 4.9,
+    "total_reviews": 3,
+    "total_posted_jobs": 4,
+    "total_spent": "$1,000.00",
+    "verification_status": "VERIFIED"
+  }
+}

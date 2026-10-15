@@ -15,6 +15,20 @@
       "when": 1791512476857,
       "tag": "0001_score_confidence_geo_eligibility",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792022778228,
+      "tag": "0002_upwork_mcp_oauth_ttl",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792024151647,
+      "tag": "0003_upwork_oauth_transactions_retention_link",
+      "breakpoints": true
     }
   ]
 }

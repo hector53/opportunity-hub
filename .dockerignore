@@ -4,6 +4,7 @@ node_modules
 .env
 .env.*
 !.env.example
+config/profile.local.json
 playwright-report
 test-results
 docs

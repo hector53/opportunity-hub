@@ -1,23 +1,50 @@
 import { eq } from "drizzle-orm";
-import { db, schema } from "@/server/db/client";
+import { db, schema, sqlClient } from "@/server/db/client";
 import { getSettings } from "@/server/services/settings";
 import { syncGetOnBoard } from "@/server/connectors/getonboard/sync";
 import { rescoreStale } from "@/server/services/rescore";
+import { purgeExpiredUpworkContent } from "@/server/connectors/upwork/retention";
+import { UPWORK_ADVISORY_LOCK_ID } from "@/server/connectors/upwork/lock";
 
 const TICK_MS = 5 * 60 * 1000;
 const g = globalThis as unknown as { __ohScheduler?: NodeJS.Timeout };
 
-/** Checks every 5 minutes whether a scheduled Get on Board sync is due. Concurrency is guarded by an advisory lock. */
-export function startScheduler() {
+async function purgeUpworkWithSharedLock(): Promise<number> {
+  const conn = await sqlClient.reserve();
+  try {
+    const [{ locked }] = await conn<{ locked: boolean }[]>`select pg_try_advisory_lock(${UPWORK_ADVISORY_LOCK_ID}) as locked`;
+    if (!locked) return 0;
+    try {
+      return await purgeExpiredUpworkContent();
+    } finally {
+      await conn`select pg_advisory_unlock(${UPWORK_ADVISORY_LOCK_ID})`;
+    }
+  } finally {
+    conn.release();
+  }
+}
+
+/** Checks retention and scheduled Get on Board syncs every 5 minutes. */
+export function startScheduler(options: { enableGetOnBoard?: boolean } = {}) {
   if (g.__ohScheduler) return;
+  const enableGetOnBoard = options.enableGetOnBoard ?? true;
   const tick = async () => {
     try {
-      const rescored = await rescoreStale();
-      if (rescored) console.log(`[scheduler] re-scored ${rescored} opportunities with the current scoring version`);
+      const purged = await purgeUpworkWithSharedLock();
+      if (purged) console.log(`[scheduler] purged ${purged} expired Upwork content rows`);
     } catch (e) {
-      console.error("[scheduler] rescore failed", e instanceof Error ? e.message : e);
+      console.error("[scheduler] Upwork retention purge failed", e instanceof Error ? e.message : e);
+    }
+    if (enableGetOnBoard) {
+      try {
+        const rescored = await rescoreStale();
+        if (rescored) console.log(`[scheduler] re-scored ${rescored} opportunities with the current scoring version`);
+      } catch (e) {
+        console.error("[scheduler] rescore failed", e instanceof Error ? e.message : e);
+      }
     }
     try {
+      if (!enableGetOnBoard) return;
       const settings = await getSettings();
       const cfg = settings.sync.getonboard;
       if (!cfg.enabled) return;
@@ -35,5 +62,5 @@ export function startScheduler() {
   setTimeout(tick, 60 * 1000).unref();
   g.__ohScheduler = setInterval(tick, TICK_MS);
   g.__ohScheduler.unref();
-  console.log("[scheduler] started (Get on Board)");
+  console.log(`[scheduler] started (Upwork retention${enableGetOnBoard ? " + Get on Board" : ""})`);
 }

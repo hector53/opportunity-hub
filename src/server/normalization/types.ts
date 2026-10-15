@@ -6,7 +6,7 @@ export type FieldProvenance = Record<string, { kind: ProvenanceKind; note?: stri
 export type ClientType = "founder" | "startup" | "smb" | "agency" | "recruiter" | "enterprise" | "unknown";
 export type EngagementType = "freelance" | "fractional" | "contract" | "part_time" | "full_time" | "unknown";
 export type BudgetPeriod = "hour" | "month" | "year" | "fixed" | "unknown";
-export type IngestionMethod = "api" | "manual_form" | "manual_text" | "email" | "demo";
+export type IngestionMethod = "api" | "mcp" | "manual_form" | "manual_text" | "email" | "demo";
 
 /** Shape every connector must produce before entering the ingestion pipeline. */
 export interface NormalizedOpportunity {
@@ -44,5 +44,7 @@ export interface NormalizedOpportunity {
   confidence: "high" | "medium" | "low";
   provenance: FieldProvenance;
   isDemo: boolean;
+  /** Source-content expiry. Upwork MCP records are temporary by policy; other connectors leave it null. */
+  retentionExpiresAt?: Date | null;
   rawPayload: unknown;
 }

@@ -20,7 +20,7 @@ Checking several job platforms by hand takes a lot of time, and most "auto-apply
 
 | Area | What it does |
 |---|---|
-| **Sources** | Real sync with the [Get on Board](https://www.getonbrd.com) public API (manual and scheduled), with run history and errors. Manual import (text + link) for Workana, Upwork or any other source. Adapters for the official Upwork API and for Gmail are prepared but not connected yet |
+| **Sources** | Real sync with the [Get on Board](https://www.getonbrd.com) public API (manual and scheduled), manual import (text + link), and manual, on-demand discovery through the official Upwork MCP with an Opportunity Hub-owned OAuth client. Gmail remains unconnected |
 | **Normalization & de-dup** | Idempotent ingestion. Identity is the external id, then the canonical URL, then a content hash. Cross-source look-alikes are flagged, never merged silently. Every field records where it came from: **source**, **manual** or **inferred** |
 | **Explainable scoring** | Four separate scores (Technology/Job, Client, Commercial, Practical), each with reasons and evidence snippets. Missing data shows as **Unknown** instead of a guess. A **confidence level** (high/medium/low) says how much of the score rests on known data, and only medium/high-confidence, eligible, non-high-risk items are ever *recommended*. Budgets are never converted between currencies implicitly. Weights are configurable and no sensitive personal attributes are used |
 | **Geographic eligibility** | Distinguishes fully remote, remote-restricted (`remote_local`), hybrid and onsite work. The result is `eligible`, `ineligible` (explicit evidence only) or `needs_review` (insufficient information is never treated as incompatible), and it is computed against the location in your profile |
@@ -52,7 +52,7 @@ Browser ──► Next.js 16 (App Router, Server Components + Server Actions)
               │  proxy.ts → session check on every route
               ├─ features/*        UI + queries + server actions per domain
               └─ server/*
-                   connectors/     getonboard (live) · manual · upwork/workana/email (prepared)
+                   connectors/     getonboard/upwork (live) · manual · workana/email (prepared)
                    ingestion/      normalize → dedupe → upsert → provenance → score + risks
                    scoring/        deterministic engine + score history
                    security/       Security Gate rules
@@ -159,14 +159,14 @@ E2E_PASSWORD=... npm run test:e2e   # Playwright against a running instance; als
 | Platform | Approach |
 |---|---|
 | Get on Board | Public API v0 (no auth) with sequential, low-frequency requests and a link back to every original posting |
-| Upwork | Official API only (OAuth 2.0 + GraphQL), which requires an API key approved by Upwork. Until then: manual import. Never authenticated scraping |
+| Upwork | Official MCP with an Opportunity Hub-owned OAuth client, application-limited `list_accounts`/`find_jobs`, manual searches and a sub-24-hour TTL. The provider-controlled OAuth scope is shown separately and is not assumed read-only. Never reuse Codex tokens or scrape authenticated pages |
 | Workana | No official API is known, so manual import plus (planned) email notifications. No scrapers or browser automation |
 | Gmail | Planned: OAuth with the minimum read-only scope. Attachments are never downloaded automatically |
 
 ## Roadmap
 
 - **M0, MVP (this release):** everything listed above.
-- **M1, integrations:** Gmail OAuth, notification classification, reply detection and email ↔ application correlation (always proposed, never applied silently); official Upwork integration once authorized; Workana email parsing; follow-up reminders.
+- **M1, discovery first:** Opportunity discovery through the official Upwork MCP and other explicitly authorized connectors, on demand only, with existing dedupe/scoring/Security Gate; Playwright only for sources that permit automation. Gmail OAuth and email correlation are deferred; Workana remains manual unless an authorized API/MCP appears.
 - **M2, automation:** AI scoring as a second opinion, A/B experiments, per-source and per-segment statistics, alerts for standout opportunities, and learning from real outcomes with statistical safeguards.
 
 ## Known limitations

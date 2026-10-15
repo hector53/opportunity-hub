@@ -7,6 +7,7 @@ export type ProposalStyle = "brief" | "standard" | "detailed";
 export type ProposalLanguage = "es" | "en";
 
 export interface ProposalContext {
+  opportunityId?: string;
   title: string;
   description: string;
   companyName: string | null;
@@ -107,7 +108,7 @@ ${experiences}`;
   const user = `Opportunity on ${ctx.sourceKey}. Title: ${ctx.title}. Company: ${ctx.companyName ?? "unknown"}.
 ${untrustedBlock("job_post", ctx.description)}`;
 
-  const { data, model, cached } = await completeJson({ purpose: "proposal", system, user, schema: aiProposalSchema, settings, maxTokens: 1400 });
+  const { data, model, cached } = await completeJson({ opportunityId: ctx.opportunityId, purpose: "proposal", system, user, schema: aiProposalSchema, settings, maxTokens: 1400 });
   const validKeys = new Set(p.experiences.map((e) => e.key));
   const invalid = data.usedExperienceKeys.filter((k) => !validKeys.has(k));
   const warnings = [...data.warnings];

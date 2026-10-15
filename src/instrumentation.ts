@@ -14,7 +14,6 @@ export async function register() {
     }
   }
 
-  if (process.env.SCHEDULER_ENABLED === "false") return;
   const { startScheduler } = await import("./server/scheduling/scheduler");
-  startScheduler();
+  startScheduler({ enableGetOnBoard: process.env.SCHEDULER_ENABLED !== "false" });
 }

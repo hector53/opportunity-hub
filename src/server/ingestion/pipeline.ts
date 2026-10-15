@@ -43,6 +43,7 @@ function sourceFields(n: NormalizedOpportunity) {
     confidence: n.confidence,
     provenance: n.provenance,
     originalUrl: n.originalUrl,
+    retentionExpiresAt: n.retentionExpiresAt ?? null,
   };
 }
 
@@ -88,7 +89,9 @@ export async function ingestOpportunity(
 ): Promise<IngestResult> {
   const dedupeKey = dedupeKeyFor(n);
   const fingerprint = fingerprintFor(n);
-  const payloadHash = sha256(stableStringify({ ...sourceFields(n), rawPayload: n.rawPayload }));
+  // Retention is local cache metadata, not source content; it must not create a
+  // new source-record version on every repeated search.
+  const payloadHash = sha256(stableStringify({ ...sourceFields(n), retentionExpiresAt: null, rawPayload: n.rawPayload }));
 
   const res = await db.transaction(async (tx) => {
     const company = await upsertCompany(n, tx);
@@ -134,7 +137,17 @@ export async function ingestOpportunity(
         where: and(eq(schema.opportunitySourceRecords.opportunityId, id), eq(schema.opportunitySourceRecords.payloadHash, payloadHash)),
         columns: { id: true },
       });
-      if (already) return { id, outcome: "unchanged" as const, possibleDuplicateOfId: existing.possibleDuplicateOfId };
+      if (already) {
+        await tx
+          .update(schema.opportunities)
+          .set({ retentionExpiresAt: n.retentionExpiresAt ?? null, updatedAt: new Date() })
+          .where(eq(schema.opportunities.id, id));
+        await tx
+          .update(schema.opportunitySourceRecords)
+          .set({ retentionExpiresAt: n.retentionExpiresAt ?? null, fetchedAt: new Date() })
+          .where(eq(schema.opportunitySourceRecords.id, already.id));
+        return { id, outcome: "unchanged" as const, possibleDuplicateOfId: existing.possibleDuplicateOfId };
+      }
       await tx
         .update(schema.opportunities)
         .set({ ...preserveManualEdits(existing, { ...sourceFields(n), clientType }), companyId: company?.id ?? existing.companyId })
@@ -153,6 +166,7 @@ export async function ingestOpportunity(
         payloadHash,
         rawPayload: n.rawPayload ?? null,
         syncRunId: ctx.syncRunId ?? null,
+        retentionExpiresAt: n.retentionExpiresAt ?? null,
       })
       .onConflictDoNothing();
 
@@ -165,7 +179,7 @@ export async function ingestOpportunity(
           entityType: "opportunity",
           entityId: id,
           action: "imported",
-          summary: `Importada${n.isDemo ? " (Demo)" : ""}: ${n.title}`,
+          summary: n.sourceKey === "upwork" ? "Importada oportunidad de Upwork MCP (contenido temporal)" : `Importada${n.isDemo ? " (Demo)" : ""}: ${n.title}`,
           actor: ctx.actor ?? "system",
           metadata: { source: n.sourceKey, method: n.ingestionMethod },
         },

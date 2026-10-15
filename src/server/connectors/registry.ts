@@ -32,12 +32,15 @@ export const SOURCE_DEFINITIONS: SourceDefinition[] = [
     defaultStatus: "pending_credentials",
     homepageUrl: "https://www.upwork.com",
     description:
-      "Adapter preparado para la API oficial (OAuth 2.0 + GraphQL). Requiere una API key aprobada por Upwork. Mientras tanto: importación manual y (M1) notificaciones por email.",
-    capabilities: ["Importación manual de texto/enlace", "Abrir la oportunidad original"],
+      "MCP oficial con cliente OAuth propio: discovery limitado por la aplicación bajo demanda, con TTL conservador y sin reutilizar la sesión de Codex.",
+    capabilities: ["Búsqueda oficial limitada por código (MCP)", "Importación manual de texto/enlace", "Abrir la oportunidad original"],
     limitations: [
-      "Sin credenciales aprobadas no hay sincronización.",
+      "La autorización debe hacerse con el cliente propio de Opportunity Hub; la sesión de Codex no se comparte con el backend.",
+      "El scope OAuth efectivo lo decide Upwork; la allowlist de herramientas del código no lo convierte automáticamente en read-only.",
+      "No se exponen herramientas de propuestas, mensajes, Connects, guardado ni cambios de perfil.",
+      "El MCP no publica todavía límites de tasa ni retención específicos en su documentación de herramienta.",
       "Nunca scraping autenticado ni uso de cookies de sesión.",
-      "Un MCP conectado a otra app (p. ej. tu cliente de IA) no es utilizable desde este backend.",
+      "Los resultados MCP se conservan como máximo por un TTL conservador de 23 h y después se redactan.",
     ],
   },
   {
@@ -45,9 +48,9 @@ export const SOURCE_DEFINITIONS: SourceDefinition[] = [
     name: "Workana",
     defaultStatus: "manual",
     homepageUrl: "https://www.workana.com",
-    description: "Sin API oficial conocida. Importación manual y (M1) detección por notificaciones de email.",
-    capabilities: ["Importación manual de texto/enlace", "Registro manual de aplicaciones"],
-    limitations: ["Sin scrapers, crawlers ni automatización de navegador."],
+    description: "No hay una API/MCP público documentado para descubrir proyectos. La vía autorizada de bajo riesgo es importación manual y alertas oficiales por email.",
+    capabilities: ["Importación manual de texto/enlace", "Alertas oficiales por email como entrada futura", "Registro manual de aplicaciones"],
+    limitations: ["Sin scrapers, crawlers, endpoints internos ni automatización de navegador sin autorización escrita de Workana."],
   },
   {
     key: "email",

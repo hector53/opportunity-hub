@@ -36,7 +36,7 @@ export async function generateProposalAction(_prev: ProposalState, formData: For
   const opp = await db.query.opportunities.findFirst({ where: eq(schema.opportunities.id, d.opportunityId) });
   if (!opp) return { error: "Oportunidad no encontrada" };
   const settings = await getSettings();
-  const ctx = { title: opp.title, description: opp.description, companyName: opp.companyName, skills: opp.skills, sourceKey: opp.sourceKey };
+  const ctx = { opportunityId: opp.id, title: opp.title, description: opp.description, companyName: opp.companyName, skills: opp.skills, sourceKey: opp.sourceKey };
   const app = await db.query.applications.findFirst({ where: eq(schema.applications.opportunityId, opp.id), columns: { id: true } });
 
   let content: string;

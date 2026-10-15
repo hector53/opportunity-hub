@@ -18,6 +18,7 @@ export function aiAvailability(settings: AppSettings): AiAvailability {
 export class AiError extends Error {}
 
 interface CallOptions<T extends z.ZodTypeAny> {
+  opportunityId?: string;
   purpose: string;
   system: string;
   user: string;
@@ -60,7 +61,7 @@ export async function completeJson<T extends z.ZodTypeAny>(opts: CallOptions<T>)
   if (count >= opts.settings.ai.maxDailyCalls) throw new AiError(`Límite diario de llamadas IA alcanzado (${opts.settings.ai.maxDailyCalls}).`);
 
   const record = async (row: Partial<typeof schema.aiCalls.$inferInsert> & { ok: boolean }) =>
-    db.insert(schema.aiCalls).values({ cacheKey, purpose: opts.purpose, model, ...row });
+    db.insert(schema.aiCalls).values({ opportunityId: opts.opportunityId ?? null, cacheKey, purpose: opts.purpose, model, ...row });
 
   let res: Response;
   try {

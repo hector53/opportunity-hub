@@ -8,8 +8,11 @@ import { assertAuthenticated } from "@/server/auth/guard";
 import { syncGetOnBoard } from "@/server/connectors/getonboard/sync";
 import { logActivity } from "@/server/services/activity";
 import { sourceDefinition } from "@/server/connectors/registry";
+import { disconnectUpwork } from "@/server/connectors/upwork/token-store";
+import { searchUpworkJobs, upworkSearchSchema } from "@/server/connectors/upwork/sync";
 
 export type SyncState = { message?: string; error?: string } | undefined;
+export type UpworkSearchState = { message?: string; error?: string } | undefined;
 
 /** Read-only sync from Get on Board's public API. Does not apply or send anything. */
 export async function syncSourceAction(_prev: SyncState, formData: FormData): Promise<SyncState> {
@@ -37,4 +40,29 @@ export async function toggleSourceAction(formData: FormData) {
     .where(eq(schema.sources.key, key));
   await logActivity({ entityType: "source", entityId: key, action: enable ? "enabled" : "disabled", summary: `${def.name} ${enable ? "habilitada" : "deshabilitada"}` });
   revalidatePath("/sources");
+}
+
+export async function searchUpworkAction(_prev: UpworkSearchState, formData: FormData): Promise<UpworkSearchState> {
+  await assertAuthenticated();
+  const parsed = upworkSearchSchema.safeParse({
+    ...Object.fromEntries(formData),
+    verifiedPaymentOnly: formData.get("verifiedPaymentOnly") === "true",
+  });
+  if (!parsed.success) return { error: "Revisa los filtros de búsqueda de Upwork." };
+  try {
+    const result = await searchUpworkJobs(parsed.data);
+    revalidatePath("/", "layout");
+    if (result.status === "error" || result.status === "partial") return { error: `${result.message}${result.errors[0] ? ` ${result.errors[0]}` : ""}` };
+    return { message: result.message };
+  } catch {
+    return { error: "No se pudo completar la búsqueda de Upwork." };
+  }
+}
+
+export async function disconnectUpworkAction() {
+  await assertAuthenticated();
+  const result = await disconnectUpwork();
+  await db.update(schema.sources).set({ status: "pending_credentials", lastError: null }).where(eq(schema.sources.key, "upwork"));
+  await logActivity({ entityType: "source", entityId: "upwork", action: "disconnected", summary: "Upwork MCP desconectado; tokens y resultados temporales eliminados", metadata: { remoteRevoked: result.remoteRevoked, redacted: result.redacted } });
+  revalidatePath("/", "layout");
 }

@@ -1,4 +1,4 @@
-import { createHmac, scryptSync, timingSafeEqual, randomBytes } from "node:crypto";
+import { createHash, createHmac, scryptSync, timingSafeEqual, randomBytes } from "node:crypto";
 
 export const SESSION_COOKIE = "oh_session";
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
@@ -42,6 +42,11 @@ export function verifySessionToken(token: string | undefined | null, now = Date.
   } catch {
     return false;
   }
+}
+
+/** Non-reversible binding used for short-lived OAuth transactions; never persist the cookie itself. */
+export function sessionBinding(token: string): string {
+  return createHash("sha256").update(token, "utf8").digest("base64url");
 }
 
 /**

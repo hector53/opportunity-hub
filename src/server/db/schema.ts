@@ -30,6 +30,7 @@ export const sourceStatusEnum = pgEnum("source_status", [
 
 export const ingestionMethodEnum = pgEnum("ingestion_method", [
   "api",
+  "mcp",
   "manual_form",
   "manual_text",
   "email",
@@ -112,6 +113,7 @@ export const messageClassificationEnum = pgEnum("message_classification", [
 ]);
 
 export const syncStatusEnum = pgEnum("sync_status", ["running", "success", "partial", "error"]);
+export const upworkConnectionStatusEnum = pgEnum("upwork_connection_status", ["connected", "error", "revoked"]);
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -165,6 +167,41 @@ export const syncRuns = pgTable(
   (t) => [index("sync_runs_source_idx").on(t.sourceKey, t.startedAt)],
 );
 
+/** Singleton OAuth connection for the private, single-user Upwork MCP client. */
+export const upworkConnections = pgTable("upwork_connections", {
+  id: integer("id").primaryKey().default(1),
+  status: upworkConnectionStatusEnum("status").notNull().default("connected"),
+  accessTokenCiphertext: text("access_token_ciphertext").notNull(),
+  refreshTokenCiphertext: text("refresh_token_ciphertext"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+  refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+  scope: text("scope"),
+  orgUid: text("org_uid"),
+  lastError: text("last_error"),
+  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** One-time, user-bound OAuth transactions. The Strict session cookie is intentionally not required at callback time. */
+export const upworkOAuthTransactions = pgTable(
+  "upwork_oauth_transactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    stateHash: text("state_hash").notNull(),
+    userSubject: text("user_subject").notNull(),
+    sessionBinding: text("session_binding").notNull(),
+    clientId: text("client_id").notNull(),
+    codeVerifierCiphertext: text("code_verifier_ciphertext").notNull(),
+    redirectUri: text("redirect_uri").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("upwork_oauth_state_hash_uq").on(t.stateHash), index("upwork_oauth_expires_idx").on(t.expiresAt)],
+);
+
 // ---------- Companies ----------
 
 export const companies = pgTable(
@@ -201,6 +238,7 @@ export const opportunities = pgTable(
     dedupeKey: text("dedupe_key").notNull(),
     fingerprint: text("fingerprint").notNull(),
     possibleDuplicateOfId: uuid("possible_duplicate_of_id"),
+    retentionExpiresAt: timestamp("retention_expires_at", { withTimezone: true }),
 
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
@@ -254,6 +292,7 @@ export const opportunities = pgTable(
     index("opportunities_published_idx").on(t.publishedAt),
     index("opportunities_score_idx").on(t.overallScore),
     index("opportunities_eligibility_idx").on(t.geoEligibility),
+    index("opportunities_retention_idx").on(t.sourceKey, t.retentionExpiresAt),
   ],
 );
 
@@ -273,11 +312,13 @@ export const opportunitySourceRecords = pgTable(
     payloadHash: text("payload_hash").notNull(),
     rawPayload: jsonb("raw_payload").$type<unknown>(),
     syncRunId: integer("sync_run_id").references(() => syncRuns.id, { onDelete: "set null" }),
+    retentionExpiresAt: timestamp("retention_expires_at", { withTimezone: true }),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("osr_opportunity_payload_uq").on(t.opportunityId, t.payloadHash),
     index("osr_external_idx").on(t.sourceKey, t.externalId),
+    index("osr_retention_idx").on(t.sourceKey, t.retentionExpiresAt),
   ],
 );
 
@@ -467,6 +508,7 @@ export const aiCalls = pgTable(
   "ai_calls",
   {
     id: serial("id").primaryKey(),
+    opportunityId: uuid("opportunity_id").references(() => opportunities.id, { onDelete: "cascade" }),
     cacheKey: text("cache_key").notNull(),
     purpose: text("purpose").notNull(),
     model: text("model").notNull(),
