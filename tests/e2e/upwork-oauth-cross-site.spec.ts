@@ -43,5 +43,7 @@ test("cross-site OAuth redirect reaches the callback without sending oh_session"
 
   await expect.poll(() => callbackResponse?.status() ?? 0).toBe(307);
   expect(callbackResponse?.status()).not.toBe(401);
-  expect(callbackResponse?.headers().location).toMatch(/\/sources\?upwork=oauth_denied/);
+  const location = callbackResponse?.headers().location;
+  expect(location).toMatch(/\/sources\?upwork=oauth_denied/);
+  expect(new URL(location!, baseURL!).origin).toBe(new URL(baseURL!).origin);
 });
