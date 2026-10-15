@@ -11,6 +11,14 @@ Opportunity Hub is designed to run privately (bound to `127.0.0.1`, accessed thr
 - The post-login redirect only accepts same-app relative paths (no `//host`, `/\host` or schemes).
 - `AUTH_DISABLED=true` is refused in production: the server won't start.
 
+## Upwork MCP OAuth (M1.0)
+
+- Opportunity Hub uses its own Upwork OAuth client and callback. Codex client metadata, tokens, cookies and sessions are never read or reused.
+- The authorization transaction uses an encrypted, short-lived `state` cookie, exact `redirect_uri` validation and PKCE `S256`. The UI shows the authorization origin, exact callback and requested read-only scope before the user opens Upwork.
+- Access and refresh tokens are stored only as AES-256-GCM ciphertext using `UPWORK_MCP_TOKEN_ENCRYPTION_KEY`; they are not placed in logs, search parameters or the repository. Expired access tokens refresh when possible; rejected credentials become an error state and require reauthorization.
+- The MCP transport has a hard runtime allowlist of `list_accounts` and `find_jobs`; write-capable tools are not exposed. Searches are manual, limited to 10 results, rate-limited and retried only once for transient responses.
+- Upwork content is treated as untrusted data, stored without `rawPayload`, expires after 23 hours and is redacted on expiry or disconnect. External URLs are only shown through the existing confirmation UI; no content is opened, executed, downloaded or submitted automatically.
+
 ## Proxy headers (`TRUST_PROXY`)
 
 `X-Forwarded-For` and `X-Real-IP` can be set by any client. Opportunity Hub **ignores them by default**, so every login attempt shares the `direct` throttle bucket, which is correct when only you reach the app through a tunnel.

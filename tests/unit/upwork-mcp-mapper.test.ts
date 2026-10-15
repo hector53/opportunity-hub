@@ -12,7 +12,7 @@ describe("Upwork MCP discovery PoC", () => {
     const normalized = mapUpworkMcpJob(job);
 
     expect(normalized.sourceKey).toBe("upwork");
-    expect(normalized.ingestionMethod).toBe("api");
+    expect(normalized.ingestionMethod).toBe("mcp");
     expect(normalized.externalId).toBe("synthetic-upwork-job-001");
     expect(normalized.originalUrl).toBe("https://upwork.com/jobs/~02synthetic001");
     expect(normalized.description).not.toContain("untrusted_participant_content");
@@ -22,6 +22,7 @@ describe("Upwork MCP discovery PoC", () => {
     expect(normalized.budgetPeriod).toBe("hour");
     expect(normalized.budgetCurrency).toBeNull();
     expect(normalized.provenance.budget?.note).toMatch(/no expone un campo de moneda/i);
+    expect(normalized.rawPayload).toBeNull();
   });
 
   it("keeps missing search data unknown instead of inventing a company or location", () => {
@@ -31,6 +32,10 @@ describe("Upwork MCP discovery PoC", () => {
     expect(normalized.remote).toBeNull();
     expect(normalized.budgetMin).toBeNull();
     expect(normalized.confidence).toBe("medium");
+  });
+
+  it("rejects non-HTTP(S) source URLs before they reach the pipeline", () => {
+    expect(() => mapUpworkMcpJob({ id: "unsafe", title: "Synthetic job", url: "javascript:alert(1)" })).toThrow(/URL no HTTP/i);
   });
 
   it("allows only account selection and read-only job discovery tools", () => {

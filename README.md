@@ -159,14 +159,14 @@ E2E_PASSWORD=... npm run test:e2e   # Playwright against a running instance; als
 | Platform | Approach |
 |---|---|
 | Get on Board | Public API v0 (no auth) with sequential, low-frequency requests and a link back to every original posting |
-| Upwork | Official API only (OAuth 2.0 + GraphQL), which requires an API key approved by Upwork. Until then: manual import. Never authenticated scraping |
+| Upwork | Official MCP with an Opportunity Hub-owned OAuth client, read-only `list_accounts`/`find_jobs`, manual searches and a sub-24-hour TTL. Never reuse Codex tokens or scrape authenticated pages |
 | Workana | No official API is known, so manual import plus (planned) email notifications. No scrapers or browser automation |
 | Gmail | Planned: OAuth with the minimum read-only scope. Attachments are never downloaded automatically |
 
 ## Roadmap
 
 - **M0, MVP (this release):** everything listed above.
-- **M1, integrations:** Gmail OAuth, notification classification, reply detection and email ↔ application correlation (always proposed, never applied silently); official Upwork integration once authorized; Workana email parsing; follow-up reminders.
+- **M1, discovery first:** Opportunity discovery through the official Upwork MCP and other explicitly authorized connectors, on demand only, with existing dedupe/scoring/Security Gate; Playwright only for sources that permit automation. Gmail OAuth and email correlation are deferred; Workana remains manual unless an authorized API/MCP appears.
 - **M2, automation:** AI scoring as a second opinion, A/B experiments, per-source and per-segment statistics, alerts for standout opportunities, and learning from real outcomes with statistical safeguards.
 
 ## Known limitations

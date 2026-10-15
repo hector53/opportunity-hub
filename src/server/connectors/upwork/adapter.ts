@@ -1,7 +1,8 @@
 import type { Connector, ConnectorStatus } from "../types";
 
 /**
- * Upwork official connector status (MCP PoC verified, backend NOT connected).
+ * Upwork official connector status. Runtime OAuth state is shown by Sources from the database;
+ * this synchronous adapter only describes whether the local configuration can start OAuth.
  *
  * Verified facts (2026-10):
  *  - Upwork's API is GraphQL over OAuth 2.0 (authorization code grant), endpoint
@@ -9,28 +10,29 @@ import type { Connector, ConnectorStatus } from "../types";
  *  - The official MCP server is a separate OAuth client connection. Codex's client metadata,
  *    callback and token must never be copied into this application.
  *
- * Until Opportunity Hub has its own OAuth client and the Upwork data-retention terms are
- * confirmed for durable storage, this adapter reports `pending_credentials`. Never scrape
- * authenticated pages or reuse session cookies.
+ * Never scrape authenticated pages or reuse session cookies. MCP results are read-only and have
+ * a conservative TTL in the ingestion layer.
  *
- * Next implementation step: an app-owned OAuth + PKCE flow and a read-only MCP allowlist for
- * `list_accounts` and `find_jobs`. Do not expose proposal/message/Connects tools to the agent.
+ * Runtime implementation: app-owned OAuth + PKCE, encrypted tokens, a read-only MCP allowlist
+ * for `list_accounts` and `find_jobs`, and a 23-hour retention window. Do not expose
+ * proposal/message/Connects tools to the agent.
  */
 export const UPWORK_GRAPHQL_ENDPOINT = "https://api.upwork.com/graphql";
 
 export const upworkConnector: Connector = {
   key: "upwork",
   status(): ConnectorStatus {
-    const hasKeys = Boolean(process.env.UPWORK_CLIENT_ID && process.env.UPWORK_CLIENT_SECRET);
-    if (!hasKeys) {
+    const hasClient = Boolean(process.env.UPWORK_MCP_CLIENT_ID);
+    const hasEncryptionKey = (process.env.UPWORK_MCP_TOKEN_ENCRYPTION_KEY?.length ?? 0) >= 32;
+    if (!hasClient || !hasEncryptionKey) {
       return {
         status: "pending_credentials",
-        detail: "Faltan UPWORK_CLIENT_ID / UPWORK_CLIENT_SECRET (API key aprobada por Upwork). Usa importación manual.",
+        detail: "Faltan UPWORK_MCP_CLIENT_ID o UPWORK_MCP_TOKEN_ENCRYPTION_KEY (32+ caracteres). No se usan credenciales de Codex.",
       };
     }
     return {
       status: "pending_credentials",
-      detail: "Credenciales presentes, pero el flujo OAuth se implementa en M1. Usa importación manual.",
+      detail: "OAuth propio listo para revisión; pulsa Connect Upwork para ver dominio, callback y permisos antes de autorizar.",
     };
   },
 };

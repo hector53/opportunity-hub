@@ -1,6 +1,6 @@
 # Continuidad: Opportunity Hub
 
-Última actualización: 2026-10-08 · Estado: **M0 listo para revisión**. M1 no se ha empezado (lo revisamos antes).
+Última actualización: 2026-10-14 · Estado: **M1.0 implementado en `m1/discovery-poc`, pendiente de revisión antes de OAuth real**.
 
 ## 1. Qué se verificó (ejecutado de verdad en esta sesión)
 
@@ -58,15 +58,14 @@ Para añadir una fuente: crear `server/connectors/<x>/` con un mapper a `Normali
 - [ ] Afinar las reglas de inferencia y de riesgo con datos reales (pueden dar falsos positivos, como «urgent» en un texto normal).
 - [ ] Más tests de integración con DB real (hoy cubiertos por el E2E).
 
-## 5. Plan M1: integraciones y comunicaciones (no empezado)
+## 5. Plan M1: descubrimiento primero
 
-1. **Gmail OAuth** con scope `gmail.readonly`, filtrado por label o query (`from:(upwork.com OR workana.com OR getonbrd.com)`). El token se guarda cifrado (AES-GCM con una clave del entorno). Polling cada 15 min. Un mensaje equivale a una fila en `messages` con `is_partial = true` y su enlace original; los adjuntos se ignoran.
-2. **Clasificación de notificaciones:** el clasificador por reglas actual, más IA opcional con `untrustedBlock()` y salida JSON validada.
-3. **Correlación email ↔ aplicación:** por URL o ID del job en el email, luego por fingerprint del título y luego sugerencia manual. Nunca se vincula de forma silenciosa con baja confianza.
-4. **Detección de respuestas:** propone el cambio de estado (por ejemplo Applied → Replied) para que lo apruebes; no lo aplica sin confirmación.
-5. **Upwork oficial:** cuando la API key esté aprobada, flujo OAuth (`/api/connectors/upwork/callback`) y consultas GraphQL de sólo lectura. Hay que respetar sus términos de retención.
-6. **Workana:** parser de sus emails de alertas e invitaciones.
-7. **Recordatorios** de seguimiento: notificación en Home y, opcionalmente, un email resumen. **Requiere decidir** si se permite enviar emails a ti mismo.
+1. **Upwork MCP M1.0:** OAuth propio separado de Codex, PKCE/state, tokens cifrados, allowlist de `list_accounts` y `find_jobs`, búsquedas manuales, TTL de 23 h y purga compatible con los términos. OAuth real queda pendiente de confirmación personal.
+2. **Conectores web autorizados:** diseñar Playwright sólo para sitios que permitan automatización; no Upwork/Workana sin autorización adicional. Sin descargas, propuestas, mensajes ni ejecución de contenido.
+3. **Workana:** mantener importación manual y estudiar sólo APIs/MCP o alertas oficiales autorizadas.
+4. **Gmail OAuth:** queda después de validar discovery y el dashboard; scope mínimo read-only, sin descargar adjuntos.
+5. **Clasificación/correlación de emails:** después de Gmail, siempre como propuestas revisables, nunca cambios o envíos silenciosos.
+6. **Recordatorios:** sólo tras decidir si se permiten notificaciones o emails salientes.
 
 ## 6. M2 (posterior)
 

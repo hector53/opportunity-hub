@@ -74,11 +74,13 @@ function engagementType(job: UpworkMcpJob): NormalizedOpportunity["engagementTyp
 
 /**
  * Maps a search row to the existing normalization contract without writing
- * to the database. Persistence is intentionally a later step because the
- * Upwork MCP/API terms and retention window must be confirmed first.
+ * to the database. The caller supplies the local retention deadline and the
+ * canonical ingestion pipeline applies the existing scoring and security rules.
  */
 export function mapUpworkMcpJob(input: unknown): NormalizedOpportunity {
   const job = upworkMcpJobSchema.parse(input);
+  const originalUrl = normalizeUrl(job.url);
+  if (!originalUrl) throw new Error("Resultado Upwork omitido: URL no HTTP(S)");
   const description = cleanUntrustedMarkers(job.description ?? job.description_snippet ?? "");
   const fullText = `${job.title}\n${description}`;
   const budget = parseBudget(job.budget, job.job_type);
@@ -106,12 +108,9 @@ export function mapUpworkMcpJob(input: unknown): NormalizedOpportunity {
 
   return {
     sourceKey: "upwork",
-    // The persistence enum has no `mcp` member yet. Treating this as an
-    // official API read is deliberate for the PoC; a DB migration can add a
-    // distinct method once retention terms are approved.
-    ingestionMethod: "api",
+    ingestionMethod: "mcp",
     externalId: job.id,
-    originalUrl: normalizeUrl(job.url) ?? job.url,
+    originalUrl,
     title: job.title,
     description,
     company: null,
@@ -137,6 +136,8 @@ export function mapUpworkMcpJob(input: unknown): NormalizedOpportunity {
     confidence: "medium",
     provenance,
     isDemo: false,
-    rawPayload: job,
+    // Do not persist the complete Upwork response. The discovery layer may use it in memory,
+    // but the canonical pipeline stores only normalized fields and the source reference.
+    rawPayload: null,
   };
 }

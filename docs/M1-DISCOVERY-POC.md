@@ -1,14 +1,14 @@
-# M1 — descubrimiento autónomo: estudio técnico y PoC
+# M1.0 — descubrimiento autónomo: Upwork MCP read-only
 
 Fecha del estudio: 2026-10-14
 Rama: `m1/discovery-poc`
-Estado: **PoC viable para descubrimiento read-only; integración propia aún no implementada**
+Estado: **implementación lista para revisión; OAuth real deliberadamente detenido antes de abrir el navegador**
 
 ## Decisión de alcance
 
 M1 empieza por descubrir oportunidades, no por Gmail. La primera versión debe poder ejecutar una búsqueda bajo demanda mediante conectores autorizados, convertir resultados a `NormalizedOpportunity` y reutilizar el pipeline existente de deduplicación, scoring y Security Gate.
 
-Esta rama no añade todavía un cliente OAuth persistente, workers, scheduler de búsquedas ni navegación contra plataformas de trabajo. La conexión real de Upwork se probó desde Codex sólo para validar viabilidad y catálogo de herramientas.
+Esta rama añade el cliente OAuth/MCP propio, el flujo manual de Sources y la integración read-only con el pipeline. No añade workers, búsquedas programadas ni navegación contra plataformas de trabajo. La conexión real de Upwork se probó desde Codex sólo para validar viabilidad y catálogo de herramientas; Opportunity Hub no reutiliza ese token, sesión ni callback.
 
 ## 1. Upwork MCP oficial
 
@@ -45,15 +45,17 @@ La allowlist está codificada en `src/server/connectors/upwork/mcp-policy.ts`.
 
 El `get_tool_help` del MCP **no documenta límite de tasa, cuota, comportamiento de 429, retención ni borrado**. Por eso la PoC no implementa polling ni asume que los límites de la API REST aplican al MCP. La documentación pública de la API REST menciona 300 solicitudes/minuto/IP y caché de hasta 24 horas, pero se trata como una referencia separada, no como un contrato del MCP.
 
-Guardrails propuestos hasta recibir confirmación de Upwork:
+Guardrails implementados mientras se valida el flujo real:
 
 - sólo ejecución bajo demanda;
-- máximo 2 páginas por búsqueda en la primera versión;
+- máximo 1 página por búsqueda en la primera versión;
 - máximo 10 resultados por página;
 - una ejecución concurrente por fuente;
 - timeout corto y backoff ante `429`/errores transitorios;
 - no almacenar tokens en `params`, logs ni `rawPayload` de configuración;
-- no persistir contenido de Upwork de forma duradera hasta resolver la política de retención.
+- TTL conservador de 23 h para contenido MCP, sin `rawPayload`, y purga al cargar el área privada;
+- revocación remota best-effort y borrado local de tokens y resultados temporales al desconectar;
+- ningún scheduler de búsquedas.
 
 ### Cliente independiente dentro de Opportunity Hub
 
@@ -61,12 +63,16 @@ El backend no debe llamar a `codex mcp`, leer su almacén de tokens ni usar el `
 
 1. Registrar una aplicación propia con Upwork/MCP o usar un flujo autorizado de CIMD/DCR compatible con su metadata.
 2. Ejecutar Authorization Code + PKCE desde una acción explícita del usuario.
-3. Recibir el callback en Opportunity Hub y guardar sólo el refresh token de la aplicación, cifrado con una clave del entorno; el access token se mantiene efímero.
+3. Recibir el callback en Opportunity Hub y guardar access/refresh tokens de la aplicación cifrados con AES-256-GCM y una clave dedicada del entorno; nunca se guardan en el repositorio, logs, parámetros de búsqueda ni se mezclan con Codex.
 4. En cada ejecución, llamar al transporte MCP remoto oficial y permitir sólo `list_accounts`/`find_jobs`.
 5. Validar esquema, límites, URLs y contenido no confiable antes de llamar a `ingestOpportunity`.
-6. Registrar auditoría sin tokens, prompts privados, cookies ni datos personales innecesarios.
+6. Registrar auditoría sin tokens, prompts privados, cookies ni `rawPayload`.
 
-Hay un bloqueo de diseño importante: el pipeline actual conserva oportunidades indefinidamente, mientras que los términos API públicos limitan la copia/caché de contenido. Antes de persistir resultados de Upwork en las tablas existentes hay que confirmar si el uso privado de MCP permite esa retención o introducir una política de TTL/expiración específica. La PoC de este branch sólo mapea datos en memoria.
+Los términos públicos de Upwork permiten copias intermedias limitadas y caché por no más de 24 horas; también exigen borrado ante solicitud del usuario, desactivación/desinstalación/cierre de la aplicación y terminación de los términos. El MCP oficial remite a esos términos, pero no publica un límite MCP distinto. Por seguridad de cumplimiento, la implementación usa 23 horas, redacta contenido al vencer y no hace polling. Al desconectar, revoca el token cuando es posible, elimina los tokens locales y redacta los resultados MCP temporales. Se conservan sólo el registro mínimo del CRM y las anotaciones propias del usuario.
+
+Fuentes: [Upwork API & MCP Terms](https://www.upwork.com/legal), [ayuda oficial de MCP](https://support.upwork.com/hc/en-us/articles/55446516654611-How-to-use-Upwork-with-AI-agents-through-MCP).
+
+La implementación está en `src/server/connectors/upwork/`: OAuth con `state` cifrado, PKCE `S256`, callback exacto, refresh/revocación, cliente Streamable HTTP y allowlist de dos herramientas. La UI prepara la autorización y muestra dominio, callback y permisos antes de revelar el enlace; no se ha abierto el navegador desde Opportunity Hub.
 
 ## 2. PoC de normalización
 
@@ -118,24 +124,25 @@ No encontré una API/MCP público oficial documentado para buscar proyectos. Las
 
 No se usarán endpoints internos, evasión de robots.txt o protecciones, scraping, crawlers, Playwright ni cookies de Workana. Las políticas oficiales también prohíben spam, contacto externo y compartir contenido de proyectos sin permiso: [políticas de Workana](https://help.workana.com/hc/en-us/articles/360040841214-Workana-Policies), [ayuda para encontrar trabajo](https://help.workana.com/hc/en-us/articles/360042088653-How-can-I-find-work).
 
-## 5. Dashboard propuesto
+## 5. Dashboard y ejecución manual
 
 La página `Sources` ya tiene estado, última ejecución, contadores e historial de `sync_runs`. Para discovery se propone una vista incremental, no un rediseño de arquitectura:
 
 - tarjeta por fuente: `connected`, `pending_credentials`, `manual`, `error`, `disabled`;
-- botón **Buscar ahora** sólo para conectores autorizados;
-- formulario de búsqueda con consulta, modo, filtros, límite y opción de segunda página;
+- botón **Connect Upwork** que primero muestra dominio, callback, scope y allowlist;
+- acción **Buscar Jobs** sólo después de una conexión propia autorizada;
+- formulario de búsqueda con consulta, modo, filtros y límite de 10 resultados;
 - banner visible de permisos: “sólo lectura; no postula, no envía mensajes, no gasta Connects”;
-- historial de ejecuciones: fuente, trigger, filtros no sensibles, duración, resultados, nuevos/actualizados/omitidos, cursor y errores;
-- lista de oportunidades descubiertas con badge de fuente, URL original, fecha, `applied`, propuestas como tier, score/confianza y riesgos;
+- historial de ejecuciones: fuente, trigger, filtros no sensibles, duración, resultados, nuevos/actualizados/omitidos y errores;
+- oportunidades entran al pipeline existente con badge de fuente, dedupe, score/confianza y riesgos;
 - estado separado para “OAuth de la aplicación” y “Codex conectado”, porque una sesión de Codex nunca habilita el backend;
-- acción explícita posterior **Importar al pipeline** mientras la retención de Upwork esté pendiente. No debe ocurrir implícitamente durante la búsqueda.
+- acción **Desconectar y borrar datos temporales**, con revocación remota best-effort.
 
-En la primera iteración se puede reutilizar `sync_runs` para ejecuciones read-only. No se añade una cola ni una tabla de descubrimientos hasta confirmar la política de retención y el flujo OAuth propio.
+La primera iteración reutiliza `sync_runs` para ejecuciones read-only. No se añade una cola ni una tabla de descubrimientos y no hay búsquedas programadas.
 
 ## 6. Implementación incremental
 
-### M1.0 — PoC y decisión (esta rama)
+### M1.0 — cliente propio y discovery manual (esta rama)
 
 - [x] validar OAuth y handshake desde Codex;
 - [x] enumerar herramientas y confirmar que `find_jobs` es read-only;
@@ -143,22 +150,24 @@ En la primera iteración se puede reutilizar `sync_runs` para ejecuciones read-o
 - [x] definir allowlist y contrato de conector;
 - [x] mapear una respuesta sintética a `NormalizedOpportunity`;
 - [x] documentar límites conocidos/desconocidos, Workana y Playwright;
-- [ ] confirmar con Upwork la retención permitida para una CRM privada.
+- [x] implementar OAuth propio, cifrado, refresh/revocación, allowlist y rate limit;
+- [x] integrar Sources, historial y pipeline existente con TTL compatible;
+- [x] añadir tests sintéticos de PKCE/state/cifrado/transporte/parsing;
+- [ ] ejecutar la autorización OAuth real, pendiente de revisión explícita del usuario.
 
-### M1.1 — Conector Upwork propio
+### M1.1 — validación real posterior a la revisión
 
-- OAuth de Opportunity Hub, separado de Codex;
-- token cifrado y callback local/privado aprobado;
-- `list_accounts` + `find_jobs` únicamente;
-- ejecución bajo demanda, cap de páginas y auditoría;
-- prueba de integración con una respuesta real, sin escribir aún si la retención no está resuelta.
+- registrar la aplicación propia en Upwork y confirmar el callback exacto;
+- revisar la pantalla de permisos antes de autorizar;
+- ejecutar una búsqueda real manual de baja frecuencia y verificar expiración/revocación;
+- confirmar cualquier cambio que Upwork exija en términos, scopes o límites.
 
-### M1.2 — Pipeline y dashboard
+### M1.2 — conectores web autorizados y dashboard ampliado
 
-- importar sólo tras la decisión de retención;
-- añadir `ingestionMethod = mcp` sólo con migración explícita;
-- usar dedupe, scoring, elegibilidad y Security Gate existentes;
-- historial y vista de candidatos; sin auto-aplicar ni auto-mensajear.
+- diseñar Playwright sólo para dominios con autorización explícita;
+- ampliar historial/estado específico sólo si el flujo manual demuestra utilidad;
+- mantener dedupe, scoring, elegibilidad y Security Gate existentes;
+- sin auto-aplicar ni auto-mensajear.
 
 ### M1.3 — Browser connectors autorizados
 
@@ -167,8 +176,8 @@ En la primera iteración se puede reutilizar `sync_runs` para ejecuciones read-o
 - primero un sitio de prueba o una fuente que autorice automatización;
 - nunca usarlo para Workana/Upwork sin autorización escrita adicional.
 
-## Decisiones que necesito antes de M1.1
+## Siguiente confirmación necesaria
 
-1. ¿Aceptas tratar los resultados Upwork como efímeros (por ejemplo, TTL ≤ 24 h) hasta tener confirmación escrita de los términos MCP, o prefieres no persistir nada de Upwork?
-2. ¿Autorizas crear el OAuth propio de Opportunity Hub con un callback local/privado, separado de Codex, cuando confirmemos el mecanismo de registro que acepta Upwork?
-3. ¿Qué primera fuente web, aparte de Upwork/Workana, tiene autorización explícita para que diseñemos el primer conector Playwright?
+1. Revisa en Sources el dominio `https://www.upwork.com`, el callback exacto configurado y la allowlist `list_accounts, find_jobs`.
+2. Confirma explícitamente antes de abrir el enlace de autorización. Hasta entonces no se ejecuta OAuth real.
+3. Después de validar una búsqueda manual real, decidimos juntos si se inicia el siguiente conector autorizado; Gmail sigue diferido.

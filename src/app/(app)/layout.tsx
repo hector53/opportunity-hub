@@ -4,6 +4,7 @@ import { count, eq, and } from "drizzle-orm";
 import { requireUser } from "@/server/auth/guard";
 import { authBypassEnabled } from "@/server/auth/session";
 import { db, schema } from "@/server/db/client";
+import { purgeExpiredUpworkContent } from "@/server/connectors/upwork/retention";
 import { NavLinks } from "@/components/nav-links";
 import { Logo } from "@/components/logo";
 import { logout } from "../login/actions";
@@ -20,6 +21,7 @@ async function navCounts() {
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   await requireUser();
+  await purgeExpiredUpworkContent();
   const counts = await navCounts();
   const sidebar = (
     <>

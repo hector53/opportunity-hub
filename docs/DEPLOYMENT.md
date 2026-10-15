@@ -26,6 +26,12 @@ openssl rand -base64 48            # → AUTH_SECRET
 docker compose --profile tools run --rm tools npm run auth:hash -- 'a long password'
 ```
 
+For the optional M1.0 Upwork MCP connector, keep the app-owned `UPWORK_MCP_CLIENT_ID`, optional
+`UPWORK_MCP_CLIENT_SECRET`, and a separate random `UPWORK_MCP_TOKEN_ENCRYPTION_KEY` only in the
+600-mode `.env`. Register the exact local callback
+`http://127.0.0.1:3100/api/connectors/upwork/callback` with Upwork; do not copy Codex client
+metadata or tokens. The Sources screen must be reviewed before opening the authorization link.
+
 The hash format is `scrypt:salt:hash`. It contains no `$`, so Docker Compose won't alter it when it reads `.env`.
 
 Optional private profile: copy your profile JSON to `config/profile.local.json`. That path is git-ignored, and the first seed loads it.

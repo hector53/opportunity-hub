@@ -10,6 +10,9 @@ import { emailConnector } from "@/server/connectors/email/adapter";
 import { getSettings } from "@/server/services/settings";
 import { SyncButton } from "@/features/sources/sync-button";
 import { toggleSourceAction } from "@/features/sources/actions";
+import { UpworkConnect } from "@/features/sources/upwork-connect";
+import { UpworkSearchForm } from "@/features/sources/upwork-search";
+import { getUpworkConnection } from "@/server/connectors/upwork/token-store";
 
 export const metadata = { title: "Sources · Opportunity Hub" };
 
@@ -30,7 +33,9 @@ export default async function SourcesPage() {
     db.select().from(schema.syncRuns).orderBy(desc(schema.syncRuns.startedAt)).limit(30),
     getSettings(),
   ]);
+  const upworkConnection = await getUpworkConnection();
   const gob = settings.sync.getonboard;
+  const upworkConfigured = Boolean(process.env.UPWORK_MCP_CLIENT_ID && (process.env.UPWORK_MCP_TOKEN_ENCRYPTION_KEY?.length ?? 0) >= 32);
   return (
     <>
       <PageHeader title="Sources" description="Estado de integraciones. Sólo se usan APIs oficiales o importación manual; nunca scraping ni cookies de sesión." />
@@ -38,7 +43,8 @@ export default async function SourcesPage() {
         {SOURCE_DEFINITIONS.map((def) => {
           const row = rows.find((r) => r.key === def.key);
           const runtime = RUNTIME[def.key as keyof typeof RUNTIME]?.status();
-          const status = row?.status === "disabled" ? "disabled" : (runtime?.status ?? row?.status ?? def.defaultStatus);
+          const upworkStatus = def.key === "upwork" && upworkConnection ? upworkConnection.status === "connected" ? "connected" : "error" : null;
+          const status = row?.status === "disabled" ? "disabled" : (upworkStatus ?? runtime?.status ?? row?.status ?? def.defaultStatus);
           return (
             <Card
               key={def.key}
@@ -56,7 +62,7 @@ export default async function SourcesPage() {
               }
             >
               <p className="text-sm text-muted">{def.description}</p>
-              {runtime ? <p className="mt-2 text-xs text-warn">{runtime.detail}</p> : null}
+              {runtime && !upworkStatus ? <p className="mt-2 text-xs text-warn">{runtime.detail}</p> : null}
               <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                 <div>
                   <dt className="text-subtle">Último sync OK</dt>
@@ -83,6 +89,13 @@ export default async function SourcesPage() {
                   </p>
                   <SyncButton sourceKey="getonboard" disabled={row?.status === "disabled"} />
                 </div>
+              ) : null}
+              {def.key === "upwork" ? (
+                <>
+                  <p className="mt-3 text-xs text-muted">Discovery read-only, bajo demanda y con contenido temporal (TTL conservador de 23 h). El scoring y el Security Gate existentes siguen siendo la única evaluación.</p>
+                  <UpworkConnect connected={upworkConnection?.status === "connected"} configured={upworkConfigured} />
+                  <UpworkSearchForm disabled={upworkConnection?.status !== "connected" || row?.status === "disabled"} defaultQuery={settings.profile.skills.slice(0, 3).map((skill) => skill.name).join(", ")} />
+                </>
               ) : null}
               <ul className="mt-3 list-disc space-y-0.5 pl-4 text-[11px] text-subtle">
                 {[...def.capabilities, ...def.limitations].map((t) => (
