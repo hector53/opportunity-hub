@@ -1,6 +1,6 @@
 # Continuidad: Opportunity Hub
 
-Última actualización: 2026-10-15 · Estado: **M1.0 validado en una instancia aislada en `m1/discovery-poc`; no fusionado ni desplegado**.
+Última actualización: 2026-10-15 · Estado: **M1.0 completado y fusionado en `main` (`e04ad253f81c747db85575967c6d665c39af5cf3`); no desplegado**.
 
 ## 1. Qué se verificó (ejecutado de verdad en esta sesión)
 
@@ -61,7 +61,7 @@ Para añadir una fuente: crear `server/connectors/<x>/` con un mapper a `Normali
 
 ## 5. Plan M1: descubrimiento primero
 
-1. **Upwork MCP M1.0:** OAuth propio separado de Codex, cliente registrado por DCR, transacción `state` de un solo uso vinculada al usuario, PKCE, tokens cifrados, allowlist local de `list_accounts` y `find_jobs` mapeada a los nombres MCP oficiales, búsquedas manuales, límite defensivo de resultados, TTL de 23 h y purga compatible con los términos. Upwork puede conceder el conjunto completo de scopes, por lo que el scope devuelto se conserva y muestra como auditoría, sin llamarlo read-only. La validación real se hizo en una instancia aislada y no autoriza todavía merge ni despliegue.
+1. **Upwork MCP M1.0 — completado:** OAuth propio separado de Codex, cliente registrado por DCR, transacción `state` de un solo uso vinculada al usuario, PKCE, tokens cifrados, allowlist local de `list_accounts` y `find_jobs` mapeada a los nombres MCP oficiales, búsquedas manuales, límite defensivo de resultados, TTL de 23 h y purga compatible con los términos. Upwork puede conceder el conjunto completo de scopes, por lo que el scope devuelto se conserva y muestra como auditoría, sin llamarlo read-only. La validación real se hizo en una instancia aislada, el PR #2 ya está fusionado y el CI de `main` pasa. No se ha desplegado ni se han aplicado migraciones a una base real.
 2. **Conectores web autorizados:** diseñar Playwright sólo para sitios que permitan automatización; no Upwork/Workana sin autorización adicional. Sin descargas, propuestas, mensajes ni ejecución de contenido.
 3. **Workana:** mantener importación manual y estudiar sólo APIs/MCP o alertas oficiales autorizadas.
 4. **Gmail OAuth:** queda después de validar discovery y el dashboard; scope mínimo read-only, sin descargar adjuntos.
