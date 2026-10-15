@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { mapUpworkMcpJob, upworkMcpJobSchema } from "@/server/connectors/upwork/mcp-mapper";
-import { assertAllowedUpworkMcpDiscoveryTool, isAllowedUpworkMcpDiscoveryTool } from "@/server/connectors/upwork/mcp-policy";
+import { assertAllowedUpworkMcpDiscoveryTool, isAllowedUpworkMcpDiscoveryTool, upworkMcpWireToolName } from "@/server/connectors/upwork/mcp-policy";
 
 const fixture = JSON.parse(readFileSync(path.join(__dirname, "../fixtures/upwork-mcp-search.json"), "utf8"));
 
@@ -41,7 +41,10 @@ describe("Upwork MCP discovery PoC", () => {
   it("allows only account selection and read-only job discovery tools", () => {
     expect(isAllowedUpworkMcpDiscoveryTool("list_accounts")).toBe(true);
     expect(isAllowedUpworkMcpDiscoveryTool("find_jobs")).toBe(true);
+    expect(upworkMcpWireToolName("list_accounts")).toBe("upwork__list_accounts");
+    expect(upworkMcpWireToolName("find_jobs")).toBe("upwork__find_jobs");
     expect(isAllowedUpworkMcpDiscoveryTool("manage_proposals")).toBe(false);
     expect(() => assertAllowedUpworkMcpDiscoveryTool("send_message")).toThrow(/allowlist/i);
+    expect(() => upworkMcpWireToolName("manage_proposals")).toThrow(/allowlist/i);
   });
 });

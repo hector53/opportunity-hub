@@ -1,5 +1,5 @@
 import { UPWORK_MCP_PROTOCOL_VERSION, UPWORK_MCP_SERVER_URL } from "./config";
-import { assertAllowedUpworkMcpDiscoveryTool, type UpworkMcpDiscoveryTool } from "./mcp-policy";
+import { upworkMcpWireToolName, assertAllowedUpworkMcpDiscoveryTool, type UpworkMcpDiscoveryTool } from "./mcp-policy";
 
 const MCP_TIMEOUT_MS = 20_000;
 const MCP_RETRY_DELAY_MS = 750;
@@ -109,6 +109,11 @@ export interface UpworkMcpJobPage {
   hasMore: boolean;
 }
 
+/** Providers may return more rows than requested; never pass them downstream. */
+export function capUpworkJobResults(jobs: unknown[], limit: number): unknown[] {
+  return jobs.slice(0, Math.max(0, Math.floor(limit)));
+}
+
 export function parseUpworkJobPage(value: unknown): UpworkMcpJobPage {
   const object = record(value);
   const jobs = arraysAt(value, ["jobs", "results", "data", "items"]);
@@ -186,7 +191,7 @@ export class UpworkMcpClient {
   async callDiscoveryTool(name: UpworkMcpDiscoveryTool, args: Record<string, unknown>): Promise<unknown> {
     assertAllowedUpworkMcpDiscoveryTool(name);
     await this.initialize();
-    const result = await this.request("tools/call", { name, arguments: args });
+    const result = await this.request("tools/call", { name: upworkMcpWireToolName(name), arguments: args });
     return unwrapMcpToolResult(result);
   }
 

@@ -5,7 +5,7 @@ import { getSettings } from "@/server/services/settings";
 import { ingestOpportunity } from "@/server/ingestion/pipeline";
 import { logActivity } from "@/server/services/activity";
 import { mapUpworkMcpJob, upworkMcpJobSchema } from "./mcp-mapper";
-import { parseUpworkAccounts, safeUpworkMcpErrorMessage, UpworkMcpError, withUpworkMcp, type UpworkFindJobsArgs } from "./mcp-client";
+import { capUpworkJobResults, parseUpworkAccounts, safeUpworkMcpErrorMessage, UpworkMcpError, withUpworkMcp, type UpworkFindJobsArgs } from "./mcp-client";
 import { getUpworkOAuthConfig, UpworkConfigError } from "./config";
 import { getUpworkConnection, setUpworkOrgUid } from "./token-store";
 import { purgeExpiredUpworkContent, UPWORK_CONTENT_TTL_MS } from "./retention";
@@ -130,8 +130,9 @@ export async function searchUpworkJobs(input: UpworkSearchInput, fetchImpl?: typ
         const expiresAt = new Date(Date.now() + UPWORK_CONTENT_TTL_MS);
         const orgUid = await resolveOrgUid(fetchImpl);
         const page = await withUpworkMcp((client) => client.findJobs(findJobsArgs(input, orgUid)), fetchImpl);
-        fetched = page.jobs.length;
-        for (const raw of page.jobs) {
+        const jobs = capUpworkJobResults(page.jobs, input.limit);
+        fetched = jobs.length;
+        for (const raw of jobs) {
           const parsed = upworkMcpJobSchema.safeParse(raw);
           if (!parsed.success) {
             skipped++;

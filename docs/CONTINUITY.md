@@ -1,6 +1,6 @@
 # Continuidad: Opportunity Hub
 
-Última actualización: 2026-10-14 · Estado: **M1.0 endurecido en `m1/discovery-poc`, pendiente de revisión antes de OAuth real**.
+Última actualización: 2026-10-15 · Estado: **M1.0 validado en una instancia aislada en `m1/discovery-poc`; no fusionado ni desplegado**.
 
 ## 1. Qué se verificó (ejecutado de verdad en esta sesión)
 
@@ -9,9 +9,10 @@ Entorno: macOS (máquina de desarrollo), Node 22.14, Docker 27.5, Docker Desktop
 | Comprobación | Resultado |
 |---|---|
 | `npm run lint`, `npm run typecheck` | 0 errores, 0 warnings |
-| `npm test` (Vitest) | 93/93 |
+| `npm test` (Vitest) | 98/98 |
 | `npm run build` | Turbopack local bloqueado por permisos del sandbox al enlazar el puerto auxiliar de PostCSS; `npx next build --webpack` pasa. El build Docker no se tocó. |
-| `npm run test:e2e` (Playwright) contra `next dev` y contra Docker | 3/3. Incluye la aserción «ninguna petición a dominios externos» |
+| E2E OAuth cross-site (Playwright) en instancia aislada | 1/1. La cookie `oh_session` no se envía al callback; `state`/transacción permiten el rechazo seguro y el redirect conserva el origen configurado |
+| OAuth + discovery Upwork controlado | Cliente propio registrado por DCR, conexión real verificada; `list_accounts` y `find_jobs` funcionaron. Una búsqueda con límite 3 importó exactamente 3 resultados y no ejecutó operaciones de escritura |
 | Sync real Get on Board | 643 recibidas, 185 nuevas y 154 omitidas (no remotas) en ~22 s. La segunda corrida es idempotente: 0 nuevas |
 | Sync desde la UI (Sources → Sincronizar ahora) | OK |
 | `docker compose restart` y `down` + `up` | Datos intactos (volumen `pgdata`) |
@@ -60,7 +61,7 @@ Para añadir una fuente: crear `server/connectors/<x>/` con un mapper a `Normali
 
 ## 5. Plan M1: descubrimiento primero
 
-1. **Upwork MCP M1.0:** OAuth propio separado de Codex, transacción `state` de un solo uso vinculada al usuario, PKCE, tokens cifrados, allowlist de `list_accounts` y `find_jobs`, búsquedas manuales, TTL de 23 h y purga compatible con los términos. OAuth real queda pendiente de confirmación personal; Upwork puede conceder el conjunto completo de scopes, por lo que el scope devuelto se conserva y muestra como auditoría, sin llamarlo read-only.
+1. **Upwork MCP M1.0:** OAuth propio separado de Codex, cliente registrado por DCR, transacción `state` de un solo uso vinculada al usuario, PKCE, tokens cifrados, allowlist local de `list_accounts` y `find_jobs` mapeada a los nombres MCP oficiales, búsquedas manuales, límite defensivo de resultados, TTL de 23 h y purga compatible con los términos. Upwork puede conceder el conjunto completo de scopes, por lo que el scope devuelto se conserva y muestra como auditoría, sin llamarlo read-only. La validación real se hizo en una instancia aislada y no autoriza todavía merge ni despliegue.
 2. **Conectores web autorizados:** diseñar Playwright sólo para sitios que permitan automatización; no Upwork/Workana sin autorización adicional. Sin descargas, propuestas, mensajes ni ejecución de contenido.
 3. **Workana:** mantener importación manual y estudiar sólo APIs/MCP o alertas oficiales autorizadas.
 4. **Gmail OAuth:** queda después de validar discovery y el dashboard; scope mínimo read-only, sin descargar adjuntos.
