@@ -127,7 +127,7 @@ export async function disconnectUpwork(): Promise<{ remoteRevoked: boolean; reda
       const connection = await getUpworkConnection();
       if (!connection) {
         const redacted = await purgeCachedUpworkContent();
-        await db.update(schema.sources).set({ status: "pending_credentials", lastError: null }).where(eq(schema.sources.key, "upwork"));
+        await db.update(schema.sources).set({ status: "pending_credentials", lastError: null, importedCount: 0 }).where(eq(schema.sources.key, "upwork"));
         return { remoteRevoked: true, redacted };
       }
       let remoteRevoked = false;
@@ -146,7 +146,7 @@ export async function disconnectUpwork(): Promise<{ remoteRevoked: boolean; reda
       } finally {
         await db.delete(schema.upworkConnections).where(eq(schema.upworkConnections.id, 1));
         // Keep the source disabled for new searches before releasing the shared lock.
-        await db.update(schema.sources).set({ status: "pending_credentials", lastError: null }).where(eq(schema.sources.key, "upwork"));
+        await db.update(schema.sources).set({ status: "pending_credentials", lastError: null, importedCount: 0 }).where(eq(schema.sources.key, "upwork"));
       }
       return { remoteRevoked, redacted };
     } finally {

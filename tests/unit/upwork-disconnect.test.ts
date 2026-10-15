@@ -16,7 +16,7 @@ vi.mock("drizzle-orm", () => ({ eq: vi.fn((left, right) => ({ left, right })) })
 vi.mock("@/server/connectors/upwork/retention", () => ({ purgeCachedUpworkContent: mocks.purgeCachedUpworkContent }));
 vi.mock("@/server/db/client", () => ({
   db: { query: { upworkConnections: { findFirst: mocks.findFirst } }, update: mocks.update },
-  schema: { upworkConnections: { id: "upwork_connections.id" }, sources: { key: "sources.key", status: "sources.status" } },
+  schema: { upworkConnections: { id: "upwork_connections.id" }, sources: { key: "sources.key", status: "sources.status", importedCount: "sources.imported_count" } },
   sqlClient: { reserve: mocks.reserve },
 }));
 
@@ -30,6 +30,7 @@ describe("Upwork disconnect coordination", () => {
     await expect(disconnectUpwork()).resolves.toEqual({ remoteRevoked: true, redacted: 3 });
     expect(mocks.reserve).toHaveBeenCalledTimes(1);
     expect(mocks.purgeCachedUpworkContent).toHaveBeenCalledTimes(1);
+    expect(mocks.set).toHaveBeenCalledWith({ status: "pending_credentials", lastError: null, importedCount: 0 });
     expect(mocks.update).toHaveBeenCalled();
     expect(mocks.release).toHaveBeenCalledTimes(1);
   });
