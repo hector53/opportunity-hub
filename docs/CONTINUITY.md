@@ -1,6 +1,6 @@
 # Continuidad: Opportunity Hub
 
-Última actualización: 2026-10-14 · Estado: **M1.0 implementado en `m1/discovery-poc`, pendiente de revisión antes de OAuth real**.
+Última actualización: 2026-10-14 · Estado: **M1.0 endurecido en `m1/discovery-poc`, pendiente de revisión antes de OAuth real**.
 
 ## 1. Qué se verificó (ejecutado de verdad en esta sesión)
 
@@ -9,8 +9,8 @@ Entorno: macOS (máquina de desarrollo), Node 22.14, Docker 27.5, Docker Desktop
 | Comprobación | Resultado |
 |---|---|
 | `npm run lint`, `npm run typecheck` | 0 errores, 0 warnings |
-| `npm test` (Vitest) | 44/44 |
-| `npm run build` y build de la imagen Docker | OK |
+| `npm test` (Vitest) | 93/93 |
+| `npm run build` | Turbopack local bloqueado por permisos del sandbox al enlazar el puerto auxiliar de PostCSS; `npx next build --webpack` pasa. El build Docker no se tocó. |
 | `npm run test:e2e` (Playwright) contra `next dev` y contra Docker | 3/3. Incluye la aserción «ninguna petición a dominios externos» |
 | Sync real Get on Board | 643 recibidas, 185 nuevas y 154 omitidas (no remotas) en ~22 s. La segunda corrida es idempotente: 0 nuevas |
 | Sync desde la UI (Sources → Sincronizar ahora) | OK |
@@ -27,7 +27,7 @@ Entorno: macOS (máquina de desarrollo), Node 22.14, Docker 27.5, Docker Desktop
 - **Drizzle** en lugar de Prisma: sin motor binario, menos RAM y migraciones SQL.
 - **Next 16.3.5**, React 19.2, Tailwind 4.3, Zod 4, Vitest 4, ESLint 9. Todas las versiones tienen más de 2 semanas. Se usa `.npmrc legacy-peer-deps=true` porque `eslint-plugin-import` aún no declara compatibilidad con ESLint 10 y npm 10.9 falla en el árbol de peers.
 - `src/proxy.ts`: en Next 16 `middleware` pasó a llamarse `proxy` y corre en Node. Además, cada server action llama a `assertAuthenticated()` como defensa en profundidad.
-- **Scheduler en proceso** (`instrumentation.ts` → `server/scheduling/scheduler.ts`): hace un tick cada 5 min y sincroniza si `lastRunAt` es más antiguo que `intervalMinutes`. Un advisory lock de Postgres sobre una conexión reservada evita solapes. No hay Redis ni colas.
+- **Scheduler en proceso** (`instrumentation.ts` → `server/scheduling/scheduler.ts`): hace un tick cada 5 min, purga contenido Upwork expirado aunque se desactive Get on Board y sincroniza si `lastRunAt` es más antiguo que `intervalMinutes`. Un advisory lock de Postgres sobre una conexión reservada evita solapes entre búsqueda y desconexión. No hay Redis ni colas; durante un apagado la purga espera al siguiente arranque.
 - **Dedupe:** `source:id:<externalId>` → `url:<canónica>` → hash del contenido. Las coincidencias entre fuentes (mismo título + empresa) sólo se marcan como «Posible duplicado»; nunca se fusionan.
 - **Ediciones manuales:** se marcan con `provenance[campo].kind = "manual"`, y `ingestion/merge.ts` las preserva en las re-syncs.
 - **Inferencia de tipo de cliente:** conservadora. Prioriza las autodescripciones explícitas en la vacante y, si no las hay, la descripción de la empresa. La primera versión era demasiado agresiva («Studio», «agency» en una aseguradora) y se corrigió: ahora unas 160 de 185 quedan en `unknown`, que es lo correcto.
@@ -60,7 +60,7 @@ Para añadir una fuente: crear `server/connectors/<x>/` con un mapper a `Normali
 
 ## 5. Plan M1: descubrimiento primero
 
-1. **Upwork MCP M1.0:** OAuth propio separado de Codex, PKCE/state, tokens cifrados, allowlist de `list_accounts` y `find_jobs`, búsquedas manuales, TTL de 23 h y purga compatible con los términos. OAuth real queda pendiente de confirmación personal.
+1. **Upwork MCP M1.0:** OAuth propio separado de Codex, transacción `state` de un solo uso vinculada al usuario, PKCE, tokens cifrados, allowlist de `list_accounts` y `find_jobs`, búsquedas manuales, TTL de 23 h y purga compatible con los términos. OAuth real queda pendiente de confirmación personal; el scope efectivo del proveedor aún no está confirmado.
 2. **Conectores web autorizados:** diseñar Playwright sólo para sitios que permitan automatización; no Upwork/Workana sin autorización adicional. Sin descargas, propuestas, mensajes ni ejecución de contenido.
 3. **Workana:** mantener importación manual y estudiar sólo APIs/MCP o alertas oficiales autorizadas.
 4. **Gmail OAuth:** queda después de validar discovery y el dashboard; scope mínimo read-only, sin descargar adjuntos.

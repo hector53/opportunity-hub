@@ -9,8 +9,8 @@ import { parseUpworkAccounts, safeUpworkMcpErrorMessage, UpworkMcpError, withUpw
 import { getUpworkOAuthConfig, UpworkConfigError } from "./config";
 import { getUpworkConnection, setUpworkOrgUid } from "./token-store";
 import { purgeExpiredUpworkContent, UPWORK_CONTENT_TTL_MS } from "./retention";
+import { UPWORK_ADVISORY_LOCK_ID } from "./lock";
 
-const LOCK_ID = 7_310_002;
 const MIN_RUN_INTERVAL_MS = 30_000;
 const MAX_RESULTS = 10;
 
@@ -69,9 +69,15 @@ function safeErrorMessage(error: unknown): string {
 async function resolveOrgUid(fetchImpl?: typeof fetch) {
   const config = getUpworkOAuthConfig();
   const connection = await getUpworkConnection();
-  if (config.orgUid) return config.orgUid;
-  if (connection?.orgUid) return connection.orgUid;
   const accounts = parseUpworkAccounts(await withUpworkMcp((client) => client.listAccounts(), fetchImpl));
+  const preferred = config.orgUid ?? connection?.orgUid;
+  if (preferred) {
+    if (accounts.some((account) => account.orgUid === preferred)) {
+      if (connection?.orgUid !== preferred) await setUpworkOrgUid(preferred);
+      return preferred;
+    }
+    throw new Error("La cuenta Upwork seleccionada ya no está disponible; revisa UPWORK_MCP_ORG_UID");
+  }
   if (accounts.length !== 1) throw new Error(accounts.length === 0 ? "Upwork no devolvió una cuenta seleccionable" : "Upwork devolvió varias cuentas; define UPWORK_MCP_ORG_UID antes de buscar");
   await setUpworkOrgUid(accounts[0].orgUid);
   return accounts[0].orgUid;
@@ -96,7 +102,6 @@ function findJobsArgs(input: UpworkSearchInput, orgUid: string): UpworkFindJobsA
 
 /** Read-only, manual-only Upwork MCP search. No scheduled trigger is supported. */
 export async function searchUpworkJobs(input: UpworkSearchInput, fetchImpl?: typeof fetch): Promise<UpworkSyncSummary> {
-  await purgeExpiredUpworkContent();
   const source = await db.query.sources.findFirst({ where: eq(schema.sources.key, "upwork") });
   if (!source || source.status === "disabled") return summary("skipped", "Upwork está deshabilitado");
 
@@ -110,9 +115,10 @@ export async function searchUpworkJobs(input: UpworkSearchInput, fetchImpl?: typ
 
   const conn = await sqlClient.reserve();
   try {
-    const [{ locked }] = await conn<{ locked: boolean }[]>`select pg_try_advisory_lock(${LOCK_ID}) as locked`;
+    const [{ locked }] = await conn<{ locked: boolean }[]>`select pg_try_advisory_lock(${UPWORK_ADVISORY_LOCK_ID}) as locked`;
     if (!locked) return summary("skipped", "Ya hay una búsqueda de Upwork en curso");
     try {
+      await purgeExpiredUpworkContent();
       const [run] = await db.insert(schema.syncRuns).values({ sourceKey: "upwork", trigger: "manual", params: safeParams(input) }).returning();
       try {
         const errors: string[] = [];
@@ -160,7 +166,7 @@ export async function searchUpworkJobs(input: UpworkSearchInput, fetchImpl?: typ
         return { runId: run.id, status: "error" as const, fetched: 0, created: 0, updated: 0, skipped: 0, errors: [message], message: "Upwork MCP: la búsqueda falló." };
       }
     } finally {
-      await conn`select pg_advisory_unlock(${LOCK_ID})`;
+      await conn`select pg_advisory_unlock(${UPWORK_ADVISORY_LOCK_ID})`;
     }
   } finally {
     conn.release();

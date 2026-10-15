@@ -93,7 +93,7 @@ export default async function SourcesPage() {
               {def.key === "upwork" ? (
                 <>
                   <p className="mt-3 text-xs text-muted">Discovery read-only, bajo demanda y con contenido temporal (TTL conservador de 23 h). El scoring y el Security Gate existentes siguen siendo la única evaluación.</p>
-                  <UpworkConnect connected={upworkConnection?.status === "connected"} configured={upworkConfigured} />
+                  <UpworkConnect connected={upworkConnection?.status === "connected"} configured={upworkConfigured} grantedScope={upworkConnection?.scope} />
                   <UpworkSearchForm disabled={upworkConnection?.status !== "connected" || row?.status === "disabled"} defaultQuery={settings.profile.skills.slice(0, 3).map((skill) => skill.name).join(", ")} />
                 </>
               ) : null}

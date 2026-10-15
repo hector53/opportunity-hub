@@ -1,9 +1,11 @@
 import { eq } from "drizzle-orm";
-import { db, schema } from "@/server/db/client";
+import { db, schema, sqlClient } from "@/server/db/client";
 import { getUpworkOAuthConfig } from "./config";
 import { refreshAccessToken, revokeUpworkToken, type UpworkTokenSet } from "./oauth";
 import { purgeCachedUpworkContent } from "./retention";
-import { decryptSecret, encryptSecret } from "./secure";
+import { decryptSecret } from "./secure";
+import { UPWORK_ADVISORY_LOCK_ID } from "./lock";
+import { buildUpworkTokenWritePlan, type UpworkTokenSaveMode } from "./token-merge";
 
 const ACCESS_PURPOSE = "opportunity-hub:upwork-access-token";
 const REFRESH_PURPOSE = "opportunity-hub:upwork-refresh-token";
@@ -19,24 +21,27 @@ function expiresSoon(expiresAt: Date | null, now = Date.now()): boolean {
   return expiresAt != null && expiresAt.getTime() <= now + REFRESH_MARGIN_MS;
 }
 
-export async function saveUpworkTokenSet(tokens: UpworkTokenSet, config = getUpworkOAuthConfig(), orgUid?: string | null) {
+export async function saveUpworkTokenSet(
+  tokens: UpworkTokenSet,
+  config = getUpworkOAuthConfig(),
+  options: { mode?: UpworkTokenSaveMode; orgUid?: string | null } = {},
+) {
   const existing = await getUpworkConnection();
-  const refreshCiphertext = tokens.refreshToken
-    ? encryptSecret(tokens.refreshToken, config.tokenEncryptionKey, REFRESH_PURPOSE)
-    : existing?.refreshTokenCiphertext ?? null;
+  const mode = options.mode ?? "reauthorize";
+  const plan = buildUpworkTokenWritePlan(tokens, config, existing, { mode, orgUid: options.orgUid });
   await db
     .insert(schema.upworkConnections)
     .values({
       id: 1,
       status: "connected",
-      accessTokenCiphertext: encryptSecret(tokens.accessToken, config.tokenEncryptionKey, ACCESS_PURPOSE),
-      refreshTokenCiphertext: refreshCiphertext,
-      accessTokenExpiresAt: tokens.accessTokenExpiresAt,
-      refreshTokenExpiresAt: tokens.refreshTokenExpiresAt ?? existing?.refreshTokenExpiresAt ?? null,
-      scope: tokens.scope,
-      orgUid: orgUid ?? existing?.orgUid ?? config.orgUid,
+      accessTokenCiphertext: plan.accessTokenCiphertext,
+      refreshTokenCiphertext: plan.refreshTokenCiphertext,
+      accessTokenExpiresAt: plan.accessTokenExpiresAt,
+      refreshTokenExpiresAt: plan.refreshTokenExpiresAt,
+      scope: plan.scope,
+      orgUid: plan.orgUid,
       lastError: null,
-      connectedAt: existing?.connectedAt ?? new Date(),
+      connectedAt: plan.connectedAt,
       revokedAt: null,
       updatedAt: new Date(),
     })
@@ -44,13 +49,14 @@ export async function saveUpworkTokenSet(tokens: UpworkTokenSet, config = getUpw
       target: schema.upworkConnections.id,
       set: {
         status: "connected",
-        accessTokenCiphertext: encryptSecret(tokens.accessToken, config.tokenEncryptionKey, ACCESS_PURPOSE),
-        refreshTokenCiphertext: refreshCiphertext,
-        accessTokenExpiresAt: tokens.accessTokenExpiresAt,
-        refreshTokenExpiresAt: tokens.refreshTokenExpiresAt ?? existing?.refreshTokenExpiresAt ?? null,
-        scope: tokens.scope,
-        orgUid: orgUid ?? existing?.orgUid ?? config.orgUid,
+        accessTokenCiphertext: plan.accessTokenCiphertext,
+        refreshTokenCiphertext: plan.refreshTokenCiphertext,
+        accessTokenExpiresAt: plan.accessTokenExpiresAt,
+        refreshTokenExpiresAt: plan.refreshTokenExpiresAt,
+        scope: plan.scope,
+        orgUid: plan.orgUid,
         lastError: null,
+        connectedAt: plan.connectedAt,
         revokedAt: null,
         updatedAt: new Date(),
       },
@@ -75,7 +81,7 @@ async function refreshStoredToken(connection: UpworkConnection, config: ReturnTy
   }
   try {
     const tokens = await refreshAccessToken(config, refreshToken);
-    await saveUpworkTokenSet(tokens, config, connection.orgUid);
+    await saveUpworkTokenSet(tokens, config, { mode: "refresh" });
     return tokens.accessToken;
   } catch (error) {
     await db.update(schema.upworkConnections).set({ status: "error", lastError: "No se pudo renovar el token Upwork", updatedAt: new Date() }).where(eq(schema.upworkConnections.id, 1));
@@ -114,23 +120,38 @@ export async function setUpworkOrgUid(orgUid: string) {
 
 /** Revokes upstream when possible, then always removes local tokens. */
 export async function disconnectUpwork(): Promise<{ remoteRevoked: boolean; redacted: number }> {
-  const connection = await getUpworkConnection();
-  if (!connection) return { remoteRevoked: true, redacted: 0 };
-  let remoteRevoked = false;
+  const conn = await sqlClient.reserve();
   try {
-    const config = getUpworkOAuthConfig();
-    const token = connection.refreshTokenCiphertext
-      ? decryptSecret(connection.refreshTokenCiphertext, config.tokenEncryptionKey, REFRESH_PURPOSE)
-      : decryptSecret(connection.accessTokenCiphertext, config.tokenEncryptionKey, ACCESS_PURPOSE);
-    remoteRevoked = await revokeUpworkToken(config, token);
-  } catch {
-    // Local deletion is still mandatory even if the remote revoke endpoint is unavailable.
-  }
-  let redacted = 0;
-  try {
-    redacted = await purgeCachedUpworkContent();
+    await conn`select pg_advisory_lock(${UPWORK_ADVISORY_LOCK_ID})`;
+    try {
+      const connection = await getUpworkConnection();
+      if (!connection) {
+        await db.update(schema.sources).set({ status: "pending_credentials", lastError: null }).where(eq(schema.sources.key, "upwork"));
+        return { remoteRevoked: true, redacted: 0 };
+      }
+      let remoteRevoked = false;
+      try {
+        const config = getUpworkOAuthConfig();
+        const token = connection.refreshTokenCiphertext
+          ? decryptSecret(connection.refreshTokenCiphertext, config.tokenEncryptionKey, REFRESH_PURPOSE)
+          : decryptSecret(connection.accessTokenCiphertext, config.tokenEncryptionKey, ACCESS_PURPOSE);
+        remoteRevoked = await revokeUpworkToken(config, token);
+      } catch {
+        // Local deletion is still mandatory even if the remote revoke endpoint is unavailable.
+      }
+      let redacted = 0;
+      try {
+        redacted = await purgeCachedUpworkContent();
+      } finally {
+        await db.delete(schema.upworkConnections).where(eq(schema.upworkConnections.id, 1));
+        // Keep the source disabled for new searches before releasing the shared lock.
+        await db.update(schema.sources).set({ status: "pending_credentials", lastError: null }).where(eq(schema.sources.key, "upwork"));
+      }
+      return { remoteRevoked, redacted };
+    } finally {
+      await conn`select pg_advisory_unlock(${UPWORK_ADVISORY_LOCK_ID})`;
+    }
   } finally {
-    await db.delete(schema.upworkConnections).where(eq(schema.upworkConnections.id, 1));
+    conn.release();
   }
-  return { remoteRevoked, redacted };
 }

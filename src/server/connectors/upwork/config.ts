@@ -6,14 +6,19 @@ const DEFAULT_PORT = "3100";
 export const UPWORK_MCP_SERVER_URL = "https://mcp.upwork.com/mcp";
 export const UPWORK_MCP_AUTHORIZATION_URL = "https://www.upwork.com/ab/account-security/oauth2/authorize";
 export const UPWORK_MCP_TOKEN_URL = "https://www.upwork.com/api/v3/oauth2/token";
-export const UPWORK_MCP_REVOCATION_URL = "https://www.upwork.com/api/v3/oauth2/revoke";
+export const UPWORK_MCP_REVOCATION_URL = "https://www.upwork.com/api/v3/oauth2/token/revoke";
 export const UPWORK_MCP_PROTOCOL_VERSION = "2025-06-18";
 export const UPWORK_MCP_OAUTH_COOKIE = "oh_upwork_oauth_state";
 export const UPWORK_MCP_OAUTH_STATE_TTL_SECONDS = 10 * 60;
+export const UPWORK_OAUTH_PROTECTED_RESOURCE_METADATA_URL = "https://mcp.upwork.com/.well-known/oauth-protected-resource/mcp";
+export const UPWORK_OAUTH_AUTHORIZATION_SERVER_METADATA_URL = "https://mcp.upwork.com/.well-known/oauth-authorization-server";
+
+export type UpworkClientRegistrationMode = "registered" | "cimd";
 
 export interface UpworkOAuthConfig {
   clientId: string;
   clientSecret: string | null;
+  clientRegistrationMode: UpworkClientRegistrationMode;
   redirectUri: string;
   scope: string | null;
   orgUid: string | null;
@@ -72,11 +77,28 @@ function redirectUri(env: NodeJS.ProcessEnv): string {
 export function getUpworkOAuthConfig(env: NodeJS.ProcessEnv = process.env): UpworkOAuthConfig {
   const clientId = env.UPWORK_MCP_CLIENT_ID?.trim();
   if (!clientId) throw new UpworkConfigError("Falta UPWORK_MCP_CLIENT_ID; registra una aplicación propia de Opportunity Hub en Upwork");
+  const registrationMode = env.UPWORK_MCP_CLIENT_REGISTRATION_MODE?.trim() || "registered";
+  if (registrationMode !== "registered" && registrationMode !== "cimd") {
+    throw new UpworkConfigError("UPWORK_MCP_CLIENT_REGISTRATION_MODE sólo admite registered o cimd; DCR no se ejecuta automáticamente");
+  }
+  if (registrationMode === "cimd") {
+    let metadataUrl: URL;
+    try {
+      metadataUrl = new URL(clientId);
+    } catch {
+      throw new UpworkConfigError("En modo CIMD, UPWORK_MCP_CLIENT_ID debe ser una URL HTTPS pública de metadata");
+    }
+    if (metadataUrl.protocol !== "https:" || metadataUrl.username || metadataUrl.password || metadataUrl.hash) {
+      throw new UpworkConfigError("En modo CIMD, UPWORK_MCP_CLIENT_ID debe ser una URL HTTPS pública de metadata sin credenciales ni fragmento");
+    }
+    if (env.UPWORK_MCP_CLIENT_SECRET?.trim()) throw new UpworkConfigError("CIMD usa un cliente público; elimina UPWORK_MCP_CLIENT_SECRET");
+  }
   const scope = validateReadOnlyScope(env.UPWORK_MCP_SCOPE ?? null);
   if (scope && scope.length > 500) throw new UpworkConfigError("UPWORK_MCP_SCOPE es demasiado largo");
   return {
     clientId,
     clientSecret: env.UPWORK_MCP_CLIENT_SECRET?.trim() || null,
+    clientRegistrationMode: registrationMode,
     redirectUri: redirectUri(env),
     scope,
     orgUid: env.UPWORK_MCP_ORG_UID?.trim() || null,
@@ -91,7 +113,9 @@ export function upworkAuthorizationSummary(env: NodeJS.ProcessEnv = process.env)
     authorizationOrigin,
     authorizationUrl: UPWORK_MCP_AUTHORIZATION_URL,
     redirectUri: redirect,
+    registrationMode: env.UPWORK_MCP_CLIENT_REGISTRATION_MODE?.trim() || "registered",
     tools: [...UPWORK_MCP_DISCOVERY_TOOLS],
     scope: env.UPWORK_MCP_SCOPE?.trim() || null,
+    oauthPermissionNote: "El scope lo concede Upwork; la allowlist de herramientas es una restricción adicional del código y no convierte por sí sola el token en read-only.",
   };
 }

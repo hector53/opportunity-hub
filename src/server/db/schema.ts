@@ -184,6 +184,24 @@ export const upworkConnections = pgTable("upwork_connections", {
   ...timestamps,
 });
 
+/** One-time, user-bound OAuth transactions. The Strict session cookie is intentionally not required at callback time. */
+export const upworkOAuthTransactions = pgTable(
+  "upwork_oauth_transactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    stateHash: text("state_hash").notNull(),
+    userSubject: text("user_subject").notNull(),
+    sessionBinding: text("session_binding").notNull(),
+    clientId: text("client_id").notNull(),
+    codeVerifierCiphertext: text("code_verifier_ciphertext").notNull(),
+    redirectUri: text("redirect_uri").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("upwork_oauth_state_hash_uq").on(t.stateHash), index("upwork_oauth_expires_idx").on(t.expiresAt)],
+);
+
 // ---------- Companies ----------
 
 export const companies = pgTable(
@@ -490,6 +508,7 @@ export const aiCalls = pgTable(
   "ai_calls",
   {
     id: serial("id").primaryKey(),
+    opportunityId: uuid("opportunity_id").references(() => opportunities.id, { onDelete: "cascade" }),
     cacheKey: text("cache_key").notNull(),
     purpose: text("purpose").notNull(),
     model: text("model").notNull(),

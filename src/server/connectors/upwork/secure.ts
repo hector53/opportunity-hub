@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 const VERSION = "v1";
+export const UPWORK_OAUTH_CODE_VERIFIER_PURPOSE = "opportunity-hub:upwork-oauth-code-verifier";
 
 function keyFor(material: string, purpose: string): Buffer {
   if (!material || material.length < 32) throw new Error("La clave criptográfica debe tener al menos 32 caracteres");
@@ -35,7 +36,9 @@ export function decryptSecret(envelope: string, material: string, purpose: strin
 
 export interface OAuthStatePayload {
   state: string;
-  codeVerifier: string;
+  transactionId: string;
+  userSubject: string;
+  sessionBinding: string;
   redirectUri: string;
   issuedAt: number;
 }
@@ -49,10 +52,24 @@ export function openOAuthState(envelope: string, authSecret: string): OAuthState
   const parsed: unknown = JSON.parse(raw);
   if (!parsed || typeof parsed !== "object") throw new Error("Estado OAuth inválido");
   const value = parsed as Record<string, unknown>;
-  if (typeof value.state !== "string" || typeof value.codeVerifier !== "string" || typeof value.redirectUri !== "string" || typeof value.issuedAt !== "number") {
+  if (
+    typeof value.state !== "string" ||
+    typeof value.transactionId !== "string" ||
+    typeof value.userSubject !== "string" ||
+    typeof value.sessionBinding !== "string" ||
+    typeof value.redirectUri !== "string" ||
+    typeof value.issuedAt !== "number"
+  ) {
     throw new Error("Estado OAuth incompleto");
   }
-  return { state: value.state, codeVerifier: value.codeVerifier, redirectUri: value.redirectUri, issuedAt: value.issuedAt };
+  return {
+    state: value.state,
+    transactionId: value.transactionId,
+    userSubject: value.userSubject,
+    sessionBinding: value.sessionBinding,
+    redirectUri: value.redirectUri,
+    issuedAt: value.issuedAt,
+  };
 }
 
 export function constantTimeEqual(a: string, b: string): boolean {

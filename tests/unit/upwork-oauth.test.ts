@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getUpworkOAuthConfig, validateReadOnlyScope } from "@/server/connectors/upwork/config";
-import { buildAuthorizationUrl, createPkcePair, exchangeAuthorizationCode } from "@/server/connectors/upwork/oauth";
+import { buildAuthorizationUrl, createPkcePair, exchangeAuthorizationCode, revokeUpworkToken } from "@/server/connectors/upwork/oauth";
+import { UPWORK_MCP_REVOCATION_URL } from "@/server/connectors/upwork/config";
 import { constantTimeEqual, decryptSecret, encryptSecret, openOAuthState, sealOAuthState } from "@/server/connectors/upwork/secure";
 
 const env = {
@@ -29,8 +30,22 @@ describe("Upwork OAuth security", () => {
     expect(() => validateReadOnlyScope("jobs:read proposals:write")).toThrow(/read-only/i);
   });
 
+  it("requires a legitimate registered client or an explicit CIMD URL", () => {
+    expect(getUpworkOAuthConfig({ ...env, UPWORK_MCP_CLIENT_REGISTRATION_MODE: "registered" }).clientRegistrationMode).toBe("registered");
+    expect(
+      getUpworkOAuthConfig({
+        ...env,
+        UPWORK_MCP_CLIENT_REGISTRATION_MODE: "cimd",
+        UPWORK_MCP_CLIENT_ID: "https://opportunity.example.test/.well-known/oauth-client-metadata.json",
+        UPWORK_MCP_CLIENT_SECRET: "",
+      }).clientRegistrationMode,
+    ).toBe("cimd");
+    expect(() => getUpworkOAuthConfig({ ...env, UPWORK_MCP_CLIENT_REGISTRATION_MODE: "dcr" })).toThrow(/DCR/);
+    expect(() => getUpworkOAuthConfig({ ...env, UPWORK_MCP_CLIENT_REGISTRATION_MODE: "cimd", UPWORK_MCP_CLIENT_ID: "not-a-url", UPWORK_MCP_CLIENT_SECRET: "" })).toThrow(/CIMD/);
+  });
+
   it("seals OAuth state and rejects tampering", () => {
-    const payload = { state: "state", codeVerifier: "verifier", redirectUri: env.UPWORK_MCP_REDIRECT_URI!, issuedAt: Date.now() };
+    const payload = { state: "state", transactionId: "tx-test", userSubject: "owner", sessionBinding: "binding-test", redirectUri: env.UPWORK_MCP_REDIRECT_URI!, issuedAt: Date.now() };
     const sealed = sealOAuthState(payload, "auth-secret-that-is-long-enough-for-tests-123");
     expect(openOAuthState(sealed, "auth-secret-that-is-long-enough-for-tests-123")).toEqual(payload);
     expect(() => openOAuthState(`${sealed}x`, "auth-secret-that-is-long-enough-for-tests-123")).toThrow();
@@ -58,5 +73,20 @@ describe("Upwork OAuth security", () => {
     expect(String(seenRequest?.body)).toContain("grant_type=authorization_code");
     expect(String(seenRequest?.body)).not.toContain("synthetic-client-secret");
     expect(JSON.stringify(seenRequest?.headers)).toContain("Authorization");
+  });
+
+  it("uses the provider's revocation endpoint without exposing the token in the URL", async () => {
+    const config = getUpworkOAuthConfig(env);
+    let seenUrl = "";
+    let seenBody = "";
+    const fakeFetch: typeof fetch = async (input, init) => {
+      seenUrl = String(input);
+      seenBody = String(init?.body);
+      return new Response(null, { status: 200 });
+    };
+    await expect(revokeUpworkToken(config, "synthetic-refresh-token", fakeFetch)).resolves.toBe(true);
+    expect(seenUrl).toBe(UPWORK_MCP_REVOCATION_URL);
+    expect(seenBody).toContain("token=synthetic-refresh-token");
+    expect(seenUrl).not.toContain("synthetic-refresh-token");
   });
 });

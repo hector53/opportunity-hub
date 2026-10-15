@@ -32,10 +32,11 @@ export const SOURCE_DEFINITIONS: SourceDefinition[] = [
     defaultStatus: "pending_credentials",
     homepageUrl: "https://www.upwork.com",
     description:
-      "MCP oficial con cliente OAuth propio: discovery read-only bajo demanda, con TTL conservador y sin reutilizar la sesión de Codex.",
-    capabilities: ["Búsqueda oficial read-only (MCP)", "Importación manual de texto/enlace", "Abrir la oportunidad original"],
+      "MCP oficial con cliente OAuth propio: discovery limitado por la aplicación bajo demanda, con TTL conservador y sin reutilizar la sesión de Codex.",
+    capabilities: ["Búsqueda oficial limitada por código (MCP)", "Importación manual de texto/enlace", "Abrir la oportunidad original"],
     limitations: [
       "La autorización debe hacerse con el cliente propio de Opportunity Hub; la sesión de Codex no se comparte con el backend.",
+      "El scope OAuth efectivo lo decide Upwork; la allowlist de herramientas del código no lo convierte automáticamente en read-only.",
       "No se exponen herramientas de propuestas, mensajes, Connects, guardado ni cambios de perfil.",
       "El MCP no publica todavía límites de tasa ni retención específicos en su documentación de herramienta.",
       "Nunca scraping autenticado ni uso de cookies de sesión.",

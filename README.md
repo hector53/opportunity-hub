@@ -159,7 +159,7 @@ E2E_PASSWORD=... npm run test:e2e   # Playwright against a running instance; als
 | Platform | Approach |
 |---|---|
 | Get on Board | Public API v0 (no auth) with sequential, low-frequency requests and a link back to every original posting |
-| Upwork | Official MCP with an Opportunity Hub-owned OAuth client, read-only `list_accounts`/`find_jobs`, manual searches and a sub-24-hour TTL. Never reuse Codex tokens or scrape authenticated pages |
+| Upwork | Official MCP with an Opportunity Hub-owned OAuth client, application-limited `list_accounts`/`find_jobs`, manual searches and a sub-24-hour TTL. The provider-controlled OAuth scope is shown separately and is not assumed read-only. Never reuse Codex tokens or scrape authenticated pages |
 | Workana | No official API is known, so manual import plus (planned) email notifications. No scrapers or browser automation |
 | Gmail | Planned: OAuth with the minimum read-only scope. Attachments are never downloaded automatically |
 

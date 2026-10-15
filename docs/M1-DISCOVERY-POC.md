@@ -8,6 +8,8 @@ Estado: **implementación lista para revisión; OAuth real deliberadamente deten
 
 M1 empieza por descubrir oportunidades, no por Gmail. La primera versión debe poder ejecutar una búsqueda bajo demanda mediante conectores autorizados, convertir resultados a `NormalizedOpportunity` y reutilizar el pipeline existente de deduplicación, scoring y Security Gate.
 
+> En este documento, “read-only” describe las operaciones que Opportunity Hub permite ejecutar. No significa que el token OAuth tenga permisos de sólo lectura: el scope efectivo lo concede y debe confirmarlo Upwork.
+
 Esta rama añade el cliente OAuth/MCP propio, el flujo manual de Sources y la integración read-only con el pipeline. No añade workers, búsquedas programadas ni navegación contra plataformas de trabajo. La conexión real de Upwork se probó desde Codex sólo para validar viabilidad y catálogo de herramientas; Opportunity Hub no reutiliza ese token, sesión ni callback.
 
 ## 1. Upwork MCP oficial
@@ -16,7 +18,7 @@ Esta rama añade el cliente OAuth/MCP propio, el flujo manual de Sources y la in
 
 - `GET https://mcp.upwork.com/mcp` sin token responde `401` y anuncia `https://mcp.upwork.com/.well-known/oauth-protected-resource/mcp`.
 - La metadata pública identifica el recurso como `https://mcp.upwork.com/mcp` y el servidor de autorización como `https://mcp.upwork.com`.
-- La metadata OAuth publica autorización en `https://www.upwork.com/ab/account-security/oauth2/authorize`, token en `https://www.upwork.com/api/v3/oauth2/token`, PKCE `S256`, y soporte de Client ID Metadata Documents.
+- La metadata OAuth publica autorización en `https://www.upwork.com/ab/account-security/oauth2/authorize`, token en `https://www.upwork.com/api/v3/oauth2/token`, revocación en `https://www.upwork.com/api/v3/oauth2/token/revoke`, PKCE `S256`, `registration_endpoint` en `https://www.upwork.com/register` y soporte de Client ID Metadata Documents.
 - Codex completó una conexión OAuth independiente y la enumeración devolvió 30 herramientas. No se copiaron tokens, cookies ni sesiones al repositorio.
 - Una búsqueda read-only real con `list_accounts` + `find_jobs(action=search)` devolvió 3 oportunidades, `hasNextPage=true` y cursor `3`. La respuesta incluía título, URL, ID, fechas, skills, modalidad, presupuesto/propuestas y datos agregados del cliente.
 
@@ -28,6 +30,8 @@ El servidor también expone operaciones de escritura. La aplicación no debe ent
 
 - `list_accounts`: obtiene el `org_uid` de la cuenta seleccionada.
 - `find_jobs`: `search`, `get` y `smart_search`; el propio servidor marca la herramienta como `read_only`.
+
+Ese atributo describe la herramienta MCP, no constituye una garantía de que el access token tenga un scope limitado; esa distinción queda visible en Sources y pendiente de confirmación contra la cuenta/proveedor.
 
 Quedan fuera de la integración de discovery `manage_proposals`, `confirm_preview`, `send_message`, `save_job`, `get_freelancer_financials`, `update_profile`, uploads, ofertas, contratos y cualquier otra herramienta que modifique estado, envíe mensajes o exponga datos innecesarios.
 
@@ -53,7 +57,7 @@ Guardrails implementados mientras se valida el flujo real:
 - una ejecución concurrente por fuente;
 - timeout corto y backoff ante `429`/errores transitorios;
 - no almacenar tokens en `params`, logs ni `rawPayload` de configuración;
-- TTL conservador de 23 h para contenido MCP, sin `rawPayload`, y purga al cargar el área privada;
+- TTL conservador de 23 h para contenido MCP, sin `rawPayload`, y purga independiente del dashboard;
 - revocación remota best-effort y borrado local de tokens y resultados temporales al desconectar;
 - ningún scheduler de búsquedas.
 
@@ -61,18 +65,18 @@ Guardrails implementados mientras se valida el flujo real:
 
 El backend no debe llamar a `codex mcp`, leer su almacén de tokens ni usar el `client_id`/callback de Codex. El diseño correcto es:
 
-1. Registrar una aplicación propia con Upwork/MCP o usar un flujo autorizado de CIMD/DCR compatible con su metadata.
+1. Usar un cliente registrado propio de Opportunity Hub. La metadata también declara CIMD, pero CIMD exige una URL HTTPS pública de metadata; no es el callback local ni las credenciales de Codex. El modo `dcr` no se ejecuta automáticamente: cualquier registro externo debe completarse según el flujo de Upwork y con aprobación explícita.
 2. Ejecutar Authorization Code + PKCE desde una acción explícita del usuario.
 3. Recibir el callback en Opportunity Hub y guardar access/refresh tokens de la aplicación cifrados con AES-256-GCM y una clave dedicada del entorno; nunca se guardan en el repositorio, logs, parámetros de búsqueda ni se mezclan con Codex.
 4. En cada ejecución, llamar al transporte MCP remoto oficial y permitir sólo `list_accounts`/`find_jobs`.
 5. Validar esquema, límites, URLs y contenido no confiable antes de llamar a `ingestOpportunity`.
 6. Registrar auditoría sin tokens, prompts privados, cookies ni `rawPayload`.
 
-Los términos públicos de Upwork permiten copias intermedias limitadas y caché por no más de 24 horas; también exigen borrado ante solicitud del usuario, desactivación/desinstalación/cierre de la aplicación y terminación de los términos. El MCP oficial remite a esos términos, pero no publica un límite MCP distinto. Por seguridad de cumplimiento, la implementación usa 23 horas, redacta contenido al vencer y no hace polling. Al desconectar, revoca el token cuando es posible, elimina los tokens locales y redacta los resultados MCP temporales. Se conservan sólo el registro mínimo del CRM y las anotaciones propias del usuario.
+Los términos públicos de Upwork permiten copias intermedias limitadas y caché por no más de 24 horas; también exigen borrado ante solicitud del usuario, desactivación/desinstalación/cierre de la aplicación y terminación de los términos. El MCP oficial remite a esos términos, pero no publica un límite MCP distinto. Por seguridad de cumplimiento, la implementación usa 23 horas, redacta contenido al vencer y no hace polling. Al desconectar, revoca el token cuando es posible, elimina los tokens locales y redacta los resultados MCP temporales, incluyendo source records, scores, riesgos, propuestas derivadas, actividad y caché IA asociado. Se conservan sólo el registro genérico mínimo del CRM y las anotaciones propias del usuario. El purgador corre al arrancar y cada cinco minutos; durante un apagado prolongado no hay proceso que pueda borrar datos, y la purga de arranque es la recuperación prevista.
 
 Fuentes: [Upwork API & MCP Terms](https://www.upwork.com/legal), [ayuda oficial de MCP](https://support.upwork.com/hc/en-us/articles/55446516654611-How-to-use-Upwork-with-AI-agents-through-MCP).
 
-La implementación está en `src/server/connectors/upwork/`: OAuth con `state` cifrado, PKCE `S256`, callback exacto, refresh/revocación, cliente Streamable HTTP y allowlist de dos herramientas. La UI prepara la autorización y muestra dominio, callback y permisos antes de revelar el enlace; no se ha abierto el navegador desde Opportunity Hub.
+La implementación está en `src/server/connectors/upwork/`: OAuth con `state` cifrado y transacción de un solo uso vinculada al usuario, PKCE `S256`, callback exacto compatible con `SameSite=Strict`, refresh/revocación, cliente Streamable HTTP y allowlist de dos herramientas. Una reautorización reemplaza por completo tokens, scope y organización almacenados; sólo un refresh puede conservar el refresh token cuando Upwork omite uno nuevo. La UI prepara la autorización y muestra dominio, callback, modo de registro, scope solicitado/recibido y operaciones permitidas antes de revelar el enlace; no se ha abierto el navegador desde Opportunity Hub.
 
 ## 2. PoC de normalización
 
@@ -132,7 +136,7 @@ La página `Sources` ya tiene estado, última ejecución, contadores e historial
 - botón **Connect Upwork** que primero muestra dominio, callback, scope y allowlist;
 - acción **Buscar Jobs** sólo después de una conexión propia autorizada;
 - formulario de búsqueda con consulta, modo, filtros y límite de 10 resultados;
-- banner visible de permisos: “sólo lectura; no postula, no envía mensajes, no gasta Connects”;
+- banner visible que separa “OAuth concedido por Upwork” de “operaciones permitidas por el código”; éste no postula, no envía mensajes, no gasta Connects ni modifica el perfil;
 - historial de ejecuciones: fuente, trigger, filtros no sensibles, duración, resultados, nuevos/actualizados/omitidos y errores;
 - oportunidades entran al pipeline existente con badge de fuente, dedupe, score/confianza y riesgos;
 - estado separado para “OAuth de la aplicación” y “Codex conectado”, porque una sesión de Codex nunca habilita el backend;
@@ -150,9 +154,10 @@ La primera iteración reutiliza `sync_runs` para ejecuciones read-only. No se a�
 - [x] definir allowlist y contrato de conector;
 - [x] mapear una respuesta sintética a `NormalizedOpportunity`;
 - [x] documentar límites conocidos/desconocidos, Workana y Playwright;
-- [x] implementar OAuth propio, cifrado, refresh/revocación, allowlist y rate limit;
+- [x] implementar OAuth propio, cifrado, transacción `state` vinculada al usuario, refresh/revocación, allowlist y rate limit;
 - [x] integrar Sources, historial y pipeline existente con TTL compatible;
-- [x] añadir tests sintéticos de PKCE/state/cifrado/transporte/parsing;
+- [x] añadir tests sintéticos de PKCE/state/cifrado/transporte/parsing, reautorización/refresh, retención y metadatos OAuth;
+- [x] añadir E2E sintético de redirección cross-site al callback;
 - [ ] ejecutar la autorización OAuth real, pendiente de revisión explícita del usuario.
 
 ### M1.1 — validación real posterior a la revisión

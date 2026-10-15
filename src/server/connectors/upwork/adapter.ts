@@ -10,11 +10,11 @@ import type { Connector, ConnectorStatus } from "../types";
  *  - The official MCP server is a separate OAuth client connection. Codex's client metadata,
  *    callback and token must never be copied into this application.
  *
- * Never scrape authenticated pages or reuse session cookies. MCP results are read-only and have
- * a conservative TTL in the ingestion layer.
+ * Never scrape authenticated pages or reuse session cookies. Discovery responses are treated as
+ * read data and have a conservative TTL in the ingestion layer.
  *
- * Runtime implementation: app-owned OAuth + PKCE, encrypted tokens, a read-only MCP allowlist
- * for `list_accounts` and `find_jobs`, and a 23-hour retention window. Do not expose
+ * Runtime implementation: app-owned OAuth + PKCE, encrypted tokens, an application-side MCP
+ * allowlist for `list_accounts` and `find_jobs`, and a 23-hour retention window. Do not expose
  * proposal/message/Connects tools to the agent.
  */
 export const UPWORK_GRAPHQL_ENDPOINT = "https://api.upwork.com/graphql";

@@ -9,11 +9,13 @@ interface PrepareResponse {
   authorizationOrigin: string;
   authorizationUrl: string;
   redirectUri: string;
+  registrationMode: "registered" | "cimd";
   tools: string[];
   scope: string | null;
+  oauthPermissionNote: string;
 }
 
-export function UpworkConnect({ connected, configured }: { connected: boolean; configured: boolean }) {
+export function UpworkConnect({ connected, configured, grantedScope }: { connected: boolean; configured: boolean; grantedScope?: string | null }) {
   const [preview, setPreview] = useState<PrepareResponse | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,8 +37,8 @@ export function UpworkConnect({ connected, configured }: { connected: boolean; c
 
   return (
     <div className="mt-4 space-y-2 border-t border-line pt-3">
-      {!configured ? <Notice tone="warn">Configura `UPWORK_MCP_CLIENT_ID` y `UPWORK_MCP_TOKEN_ENCRYPTION_KEY` en `.env` antes de conectar. No se usan credenciales de Codex.</Notice> : null}
-      {connected ? <Notice tone="ok"><span className="inline-flex items-center gap-1"><ShieldCheck size={14} /> Cuenta conectada para discovery read-only.</span></Notice> : null}
+      {!configured ? <Notice tone="warn">Configura un cliente propio (`UPWORK_MCP_CLIENT_REGISTRATION_MODE=registered` + `UPWORK_MCP_CLIENT_ID`, o CIMD) y `UPWORK_MCP_TOKEN_ENCRYPTION_KEY` en `.env`. No se usan credenciales de Codex.</Notice> : null}
+      {connected ? <Notice tone="ok"><span className="inline-flex items-center gap-1"><ShieldCheck size={14} /> Cuenta conectada. Scope OAuth almacenado: {grantedScope ?? "no publicado/no confirmado"}.</span></Notice> : null}
       {preview ? (
         <div className="space-y-2 rounded-md border border-accent/30 bg-accent-soft/30 p-3 text-xs">
           <p className="font-semibold">Revisa antes de abrir Upwork</p>
@@ -45,12 +47,15 @@ export function UpworkConnect({ connected, configured }: { connected: boolean; c
             <dd className="break-all font-mono">{preview.authorizationOrigin}</dd>
             <dt className="text-muted">Redirect URI exacta</dt>
             <dd className="break-all font-mono">{preview.redirectUri}</dd>
-            <dt className="text-muted">Herramientas permitidas</dt>
+            <dt className="text-muted">Registro del cliente</dt>
+            <dd>{preview.registrationMode === "cimd" ? "CIMD (documento HTTPS indicado como client_id)" : "Cliente registrado propio de Opportunity Hub"}</dd>
+            <dt className="text-muted">Permisos OAuth solicitados</dt>
+            <dd>{preview.scope ?? "No se solicita un scope explícito; el proveedor decide los permisos efectivos."}</dd>
+            <dt className="text-muted">Operaciones permitidas por el código</dt>
             <dd>{preview.tools.join(", ")}</dd>
-            <dt className="text-muted">Scope OAuth</dt>
-            <dd>{preview.scope ?? "El proveedor no publicó un scope explícito; la allowlist de herramientas sigue limitada."}</dd>
           </dl>
-          <p className="text-subtle">Opportunity Hub no podrá postular, enviar mensajes, gastar Connects, guardar trabajos ni modificar tu perfil.</p>
+          <p className="text-subtle">{preview.oauthPermissionNote}</p>
+          <p className="text-subtle">Aunque el código sólo expone {preview.tools.join(" y ")}, Upwork debe confirmar los permisos efectivos del token. Opportunity Hub no postula, envía mensajes, gasta Connects, guarda trabajos ni modifica tu perfil.</p>
           <div className="flex flex-wrap gap-2 pt-1">
             <a href={preview.authorizationUrl} className="btn btn-primary" rel="noreferrer">
               <ExternalLink size={14} /> Abrir autorización de Upwork

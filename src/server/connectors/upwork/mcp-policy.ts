@@ -3,7 +3,8 @@
  *
  * The official server exposes write-capable tools as well as discovery tools.
  * An Opportunity Hub client must never pass the complete tool registry to an
- * agent: it should expose only account selection and read-only job discovery.
+ * agent: it should expose only account selection and discovery operations. This does not assert
+ * that the provider's OAuth token has a read-only scope; Sources shows that permission separately.
  */
 export const UPWORK_MCP_DISCOVERY_TOOLS = ["list_accounts", "find_jobs"] as const;
 

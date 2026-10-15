@@ -28,9 +28,14 @@ docker compose --profile tools run --rm tools npm run auth:hash -- 'a long passw
 
 For the optional M1.0 Upwork MCP connector, keep the app-owned `UPWORK_MCP_CLIENT_ID`, optional
 `UPWORK_MCP_CLIENT_SECRET`, and a separate random `UPWORK_MCP_TOKEN_ENCRYPTION_KEY` only in the
-600-mode `.env`. Register the exact local callback
+600-mode `.env`. Use `UPWORK_MCP_CLIENT_REGISTRATION_MODE=registered` for a client registered
+for Opportunity Hub in Upwork's developer flow. `cimd` is supported only when the client ID is a
+public HTTPS Client ID Metadata Document URL and no client secret is configured; the app never
+reuses Codex credentials and never performs DCR automatically. Register the exact local callback
 `http://127.0.0.1:3100/api/connectors/upwork/callback` with Upwork; do not copy Codex client
 metadata or tokens. The Sources screen must be reviewed before opening the authorization link.
+The OAuth scope shown there is the provider-controlled permission; `list_accounts` and `find_jobs`
+are only the operations allowed by this application.
 
 The hash format is `scrypt:salt:hash`. It contains no `$`, so Docker Compose won't alter it when it reads `.env`.
 
