@@ -4,23 +4,32 @@ import { lt } from "drizzle-orm";
 import { isAuthenticated } from "@/server/auth/guard";
 import { authBypassEnabled, cookieSecure, SESSION_COOKIE, sessionBinding, verifySessionToken } from "@/server/auth/session";
 import { db, schema } from "@/server/db/client";
-import { getUpworkOAuthConfig, UPWORK_MCP_OAUTH_COOKIE, UPWORK_MCP_OAUTH_STATE_TTL_SECONDS, upworkAuthorizationSummary } from "@/server/connectors/upwork/config";
+import { assertUpworkOAuthOrigin, getUpworkOAuthConfig, UPWORK_MCP_OAUTH_COOKIE, UPWORK_MCP_OAUTH_STATE_TTL_SECONDS, upworkAuthorizationSummary } from "@/server/connectors/upwork/config";
 import { buildAuthorizationUrl, createOAuthState, createPkcePair } from "@/server/connectors/upwork/oauth";
 import { encryptSecret, sealOAuthState, UPWORK_OAUTH_CODE_VERIFIER_PURPOSE } from "@/server/connectors/upwork/secure";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function sameOrigin(request: Request): boolean {
+function sameOrigin(request: Request, expectedOrigin: string): boolean {
   const origin = request.headers.get("origin");
-  return Boolean(origin && origin === new URL(request.url).origin);
+  if (origin) return origin === expectedOrigin;
+  // Chromium omits Origin for this same-origin fetch, and the app's strict
+  // Referrer-Policy also means Referer is unavailable. A missing Origin is
+  // accepted only after isAuthenticated() has verified the host-only,
+  // SameSite=Strict session cookie; a cross-site request cannot carry it.
+  if (authBypassEnabled()) return false;
+  return true;
 }
 
 export async function POST(request: Request) {
   if (!(await isAuthenticated())) return Response.json({ error: "No autorizado" }, { status: 401 });
-  if (!sameOrigin(request)) return Response.json({ error: "Origen no permitido" }, { status: 403 });
   try {
     const config = getUpworkOAuthConfig();
+    if (!sameOrigin(request, new URL(config.redirectUri).origin)) {
+      return Response.json({ error: `Origen no permitido. Usa el host exacto del redirect_uri configurado (${new URL(config.redirectUri).origin}).` }, { status: 403 });
+    }
+    assertUpworkOAuthOrigin(request.url, config.redirectUri, request.headers);
     const authSecret = process.env.AUTH_SECRET;
     if (!authSecret || authSecret.length < 32) throw new Error("AUTH_SECRET no está configurado correctamente");
     const state = createOAuthState();

@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { authBypassEnabled, SESSION_COOKIE, sessionBinding, verifySessionToken } from "@/server/auth/session";
 import { db, schema } from "@/server/db/client";
 import { revalidatePath } from "next/cache";
-import { getUpworkOAuthConfig, UPWORK_MCP_OAUTH_COOKIE, UPWORK_MCP_OAUTH_STATE_TTL_SECONDS } from "@/server/connectors/upwork/config";
+import { getUpworkOAuthConfig, hasMatchingUpworkOAuthOrigin, UPWORK_MCP_OAUTH_COOKIE, UPWORK_MCP_OAUTH_STATE_TTL_SECONDS } from "@/server/connectors/upwork/config";
 import { exchangeAuthorizationCode } from "@/server/connectors/upwork/oauth";
 import { constantTimeEqual, decryptSecret, openOAuthState, UPWORK_OAUTH_CODE_VERIFIER_PURPOSE } from "@/server/connectors/upwork/secure";
 import { saveUpworkTokenSet } from "@/server/connectors/upwork/token-store";
@@ -22,6 +22,15 @@ function redirectToSources(request: Request, result: string) {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  let config: ReturnType<typeof getUpworkOAuthConfig>;
+  try {
+    config = getUpworkOAuthConfig();
+  } catch {
+    // Keep a provider denial user-friendly even if local OAuth configuration
+    // was removed after the authorization page was opened.
+    return redirectToSources(request, url.searchParams.get("error") ? "oauth_denied" : "oauth_failed");
+  }
+  if (!hasMatchingUpworkOAuthOrigin(request.url, config.redirectUri, request.headers)) return redirectToSources(request, "oauth_origin_mismatch");
   const jar = await cookies();
   const sealed = jar.get(UPWORK_MCP_OAUTH_COOKIE)?.value;
   jar.set(UPWORK_MCP_OAUTH_COOKIE, "", { httpOnly: true, sameSite: "lax", secure: process.env.COOKIE_SECURE === "true" || url.protocol === "https:", path: "/api/connectors/upwork", maxAge: 0 });
@@ -32,7 +41,6 @@ export async function GET(request: Request) {
   if (!code || code.length > 2048 || !state || state.length > 512) return redirectToSources(request, "oauth_invalid");
 
   try {
-    const config = getUpworkOAuthConfig();
     const authSecret = process.env.AUTH_SECRET;
     if (!authSecret || authSecret.length < 32) throw new Error("AUTH_SECRET inválido");
     const transaction = openOAuthState(sealed, authSecret);

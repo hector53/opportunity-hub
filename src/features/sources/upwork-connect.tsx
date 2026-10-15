@@ -38,7 +38,13 @@ export function UpworkConnect({ connected, configured, grantedScope }: { connect
   return (
     <div className="mt-4 space-y-2 border-t border-line pt-3">
       {!configured ? <Notice tone="warn">Configura un cliente propio (`UPWORK_MCP_CLIENT_REGISTRATION_MODE=registered` + `UPWORK_MCP_CLIENT_ID`, o CIMD) y `UPWORK_MCP_TOKEN_ENCRYPTION_KEY` en `.env`. No se usan credenciales de Codex.</Notice> : null}
-      {connected ? <Notice tone="ok"><span className="inline-flex items-center gap-1"><ShieldCheck size={14} /> Cuenta conectada. Scope OAuth almacenado: {grantedScope ?? "no publicado/no confirmado"}.</span></Notice> : null}
+      {connected ? (
+        <Notice tone="warn">
+          <span className="inline-flex items-center gap-1"><ShieldCheck size={14} /> Cuenta conectada.</span>
+          <p className="mt-1">Scope OAuth devuelto por Upwork: <code>{grantedScope ?? "Upwork no incluyó un scope en la respuesta"}</code>.</p>
+          <p className="mt-1">Este valor es el permiso efectivo reportado por el proveedor y puede incluir escritura; no se interpreta como read-only. Opportunity Hub sólo permite en runtime <code>list_accounts</code> y <code>find_jobs</code>.</p>
+        </Notice>
+      ) : null}
       {preview ? (
         <div className="space-y-2 rounded-md border border-accent/30 bg-accent-soft/30 p-3 text-xs">
           <p className="font-semibold">Revisa antes de abrir Upwork</p>
@@ -55,7 +61,7 @@ export function UpworkConnect({ connected, configured, grantedScope }: { connect
             <dd>{preview.tools.join(", ")}</dd>
           </dl>
           <p className="text-subtle">{preview.oauthPermissionNote}</p>
-          <p className="text-subtle">Aunque el código sólo expone {preview.tools.join(" y ")}, Upwork debe confirmar los permisos efectivos del token. Opportunity Hub no postula, envía mensajes, gasta Connects, guarda trabajos ni modifica tu perfil.</p>
+          <p className="text-subtle">Upwork puede conceder un conjunto de scopes más amplio que esta solicitud. El valor que devuelva el token se conservará para auditoría y se mostrará después de conectar. Aunque el código sólo expone {preview.tools.join(" y ")}, Opportunity Hub no postula, envía mensajes, gasta Connects, guarda trabajos ni modifica tu perfil.</p>
           <div className="flex flex-wrap gap-2 pt-1">
             <a href={preview.authorizationUrl} className="btn btn-primary" rel="noreferrer">
               <ExternalLink size={14} /> Abrir autorización de Upwork

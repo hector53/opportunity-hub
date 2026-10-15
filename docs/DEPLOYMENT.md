@@ -34,8 +34,10 @@ public HTTPS Client ID Metadata Document URL and no client secret is configured;
 reuses Codex credentials and never performs DCR automatically. Register the exact local callback
 `http://127.0.0.1:3100/api/connectors/upwork/callback` with Upwork; do not copy Codex client
 metadata or tokens. The Sources screen must be reviewed before opening the authorization link.
-The OAuth scope shown there is the provider-controlled permission; `list_accounts` and `find_jobs`
-are only the operations allowed by this application.
+Open the application using that same host (`127.0.0.1`, not `localhost`); OAuth start and callback
+reject an origin mismatch. Upwork currently documents that connecting can grant the full set of
+scopes, so the OAuth scope shown there is the provider-controlled permission and is not claimed to
+be read-only. `list_accounts` and `find_jobs` are only the operations allowed by this application.
 
 The hash format is `scrypt:salt:hash`. It contains no `$`, so Docker Compose won't alter it when it reads `.env`.
 

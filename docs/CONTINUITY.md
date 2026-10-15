@@ -60,7 +60,7 @@ Para añadir una fuente: crear `server/connectors/<x>/` con un mapper a `Normali
 
 ## 5. Plan M1: descubrimiento primero
 
-1. **Upwork MCP M1.0:** OAuth propio separado de Codex, transacción `state` de un solo uso vinculada al usuario, PKCE, tokens cifrados, allowlist de `list_accounts` y `find_jobs`, búsquedas manuales, TTL de 23 h y purga compatible con los términos. OAuth real queda pendiente de confirmación personal; el scope efectivo del proveedor aún no está confirmado.
+1. **Upwork MCP M1.0:** OAuth propio separado de Codex, transacción `state` de un solo uso vinculada al usuario, PKCE, tokens cifrados, allowlist de `list_accounts` y `find_jobs`, búsquedas manuales, TTL de 23 h y purga compatible con los términos. OAuth real queda pendiente de confirmación personal; Upwork puede conceder el conjunto completo de scopes, por lo que el scope devuelto se conserva y muestra como auditoría, sin llamarlo read-only.
 2. **Conectores web autorizados:** diseñar Playwright sólo para sitios que permitan automatización; no Upwork/Workana sin autorización adicional. Sin descargas, propuestas, mensajes ni ejecución de contenido.
 3. **Workana:** mantener importación manual y estudiar sólo APIs/MCP o alertas oficiales autorizadas.
 4. **Gmail OAuth:** queda después de validar discovery y el dashboard; scope mínimo read-only, sin descargar adjuntos.

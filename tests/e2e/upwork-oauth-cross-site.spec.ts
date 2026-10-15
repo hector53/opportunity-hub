@@ -13,6 +13,16 @@ test.skip(!password, "E2E_PASSWORD not set");
 
 test("cross-site OAuth redirect reaches the callback without sending oh_session", async ({ page, baseURL }) => {
   await login(page);
+  const prepare = await page.evaluate(async () => {
+    const response = await fetch("/api/connectors/upwork/authorize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: window.location.origin },
+      credentials: "same-origin",
+    });
+    return { status: response.status, body: (await response.json()) as { authorizationUrl?: string; error?: string } };
+  });
+  expect(prepare.status, prepare.body.error).toBe(200);
+  expect(prepare.body.authorizationUrl).toContain("www.upwork.com");
   const callbackUrl = new URL("/api/connectors/upwork/callback?error=access_denied", baseURL).toString();
   let callbackResponse: { status: () => number; headers: () => Record<string, string> } | undefined;
   page.on("response", (response) => {

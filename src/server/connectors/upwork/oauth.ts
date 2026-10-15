@@ -5,7 +5,7 @@ import {
   UPWORK_MCP_REVOCATION_URL,
   UPWORK_MCP_SERVER_URL,
   UPWORK_MCP_TOKEN_URL,
-  validateReadOnlyScope,
+  normalizeGrantedScope,
   type UpworkOAuthConfig,
 } from "./config";
 
@@ -83,7 +83,11 @@ async function tokenRequest(config: UpworkOAuthConfig, body: URLSearchParams, fe
   const parsed = tokenResponseSchema.safeParse(json);
   if (!parsed.success) throw new UpworkOAuthError("Upwork no devolvió un access token válido", "invalid_token_response");
   const now = Date.now();
-  const scope = validateReadOnlyScope(parsed.data.scope ?? config.scope);
+  // The provider controls the effective OAuth scope. It may be broader than
+  // the requested scope; store the exact response for audit instead of
+  // claiming that the token is read-only. Refresh mode can preserve an older
+  // scope when the provider omits this optional field (token-merge.ts).
+  const scope = normalizeGrantedScope(parsed.data.scope);
   return {
     accessToken: parsed.data.access_token,
     refreshToken: parsed.data.refresh_token ?? null,

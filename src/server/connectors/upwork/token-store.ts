@@ -126,8 +126,9 @@ export async function disconnectUpwork(): Promise<{ remoteRevoked: boolean; reda
     try {
       const connection = await getUpworkConnection();
       if (!connection) {
+        const redacted = await purgeCachedUpworkContent();
         await db.update(schema.sources).set({ status: "pending_credentials", lastError: null }).where(eq(schema.sources.key, "upwork"));
-        return { remoteRevoked: true, redacted: 0 };
+        return { remoteRevoked: true, redacted };
       }
       let remoteRevoked = false;
       try {

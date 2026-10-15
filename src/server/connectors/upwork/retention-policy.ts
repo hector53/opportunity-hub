@@ -1,8 +1,24 @@
 export const UPWORK_CONTENT_TTL_MS = 23 * 60 * 60 * 1000;
 export const EXPIRED_UPWORK_TITLE = "[Contenido de Upwork expirado]";
 
+export interface UpworkSourceVersion {
+  id: string | number;
+  retentionExpiresAt: Date | null;
+}
+
 export function isUpworkContentExpired(expiresAt: Date | null, now = new Date()): boolean {
   return expiresAt != null && expiresAt.getTime() <= now.getTime();
+}
+
+/**
+ * A source-record version has its own retention deadline. An opportunity is
+ * redacted only when its current aggregate deadline has also expired.
+ */
+export function planUpworkVersionPurge(versions: readonly UpworkSourceVersion[], currentOpportunityExpiresAt: Date | null, now = new Date()) {
+  return {
+    expiredSourceRecordIds: versions.filter((version) => isUpworkContentExpired(version.retentionExpiresAt, now)).map((version) => version.id),
+    redactOpportunity: isUpworkContentExpired(currentOpportunityExpiresAt, now),
+  };
 }
 
 /** Values intentionally contain no source title, URL, identifier, snippet or score evidence. */

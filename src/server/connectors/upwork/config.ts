@@ -33,11 +33,69 @@ export class UpworkConfigError extends Error {
 }
 
 const WRITE_SCOPE_WORDS = /\b(?:write|manage|send|apply|proposal|message|connects?|profile|contract|financial|upload|save|create|update|delete)\b/i;
+const MAX_GRANTED_SCOPE_LENGTH = 2_000;
 
-export function validateReadOnlyScope(scope: string | null): string | null {
+/** Validates only the scope that Opportunity Hub asks the provider to grant. */
+export function validateRequestedScope(scope: string | null): string | null {
   const value = scope?.trim() || null;
   if (value && WRITE_SCOPE_WORDS.test(value)) throw new UpworkConfigError("UPWORK_MCP_SCOPE sólo puede solicitar permisos read-only");
   return value;
+}
+
+/**
+ * Normalizes the scope returned by Upwork for audit/display. Upwork may return
+ * write-capable scopes even when this application requests a narrower scope.
+ * This function deliberately does not interpret the provider scope as a
+ * capability allowlist; runtime operations are restricted in mcp-policy.ts.
+ */
+export function normalizeGrantedScope(scope: string | null | undefined): string | null {
+  const value = scope?.trim() || null;
+  if (value && (value.length > MAX_GRANTED_SCOPE_LENGTH || /[\u0000-\u001f\u007f]/.test(value))) {
+    throw new UpworkConfigError("Upwork devolvió un scope OAuth con formato inválido");
+  }
+  return value;
+}
+
+export function requestOrigin(requestUrl: string, headers?: Headers): string {
+  try {
+    const fallback = new URL(requestUrl);
+    const forwardedHost = headers?.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const host = forwardedHost || headers?.get("host")?.trim();
+    const forwardedProto = headers?.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    if (!host) return fallback.origin;
+    return new URL(`${forwardedProto || fallback.protocol.replace(":", "")}://${host}`).origin;
+  } catch {
+    return "null";
+  }
+}
+
+export function hasMatchingUpworkOAuthOrigin(requestUrl: string, redirectUri: string, headers?: Headers): boolean {
+  try {
+    return requestOrigin(requestUrl, headers) === new URL(redirectUri).origin;
+  } catch {
+    return false;
+  }
+}
+
+/** The browser must start and finish OAuth on the origin registered by the app. */
+export function assertUpworkOAuthOrigin(requestUrl: string, redirectUri: string, headers?: Headers): void {
+  if (!hasMatchingUpworkOAuthOrigin(requestUrl, redirectUri, headers)) {
+    const currentOrigin = (() => {
+      try {
+        return requestOrigin(requestUrl, headers);
+      } catch {
+        return "origen inválido";
+      }
+    })();
+    const redirectOrigin = (() => {
+      try {
+        return new URL(redirectUri).origin;
+      } catch {
+        return "redirect_uri inválido";
+      }
+    })();
+    throw new UpworkConfigError(`El origen actual (${currentOrigin}) no coincide con el origen configurado para OAuth (${redirectOrigin}). Abre Opportunity Hub con el host exacto del redirect_uri.`);
+  }
 }
 
 function requiredSecret(env: NodeJS.ProcessEnv, key: string): string {
@@ -93,7 +151,7 @@ export function getUpworkOAuthConfig(env: NodeJS.ProcessEnv = process.env): Upwo
     }
     if (env.UPWORK_MCP_CLIENT_SECRET?.trim()) throw new UpworkConfigError("CIMD usa un cliente público; elimina UPWORK_MCP_CLIENT_SECRET");
   }
-  const scope = validateReadOnlyScope(env.UPWORK_MCP_SCOPE ?? null);
+  const scope = validateRequestedScope(env.UPWORK_MCP_SCOPE ?? null);
   if (scope && scope.length > 500) throw new UpworkConfigError("UPWORK_MCP_SCOPE es demasiado largo");
   return {
     clientId,
@@ -116,6 +174,6 @@ export function upworkAuthorizationSummary(env: NodeJS.ProcessEnv = process.env)
     registrationMode: env.UPWORK_MCP_CLIENT_REGISTRATION_MODE?.trim() || "registered",
     tools: [...UPWORK_MCP_DISCOVERY_TOOLS],
     scope: env.UPWORK_MCP_SCOPE?.trim() || null,
-    oauthPermissionNote: "El scope lo concede Upwork; la allowlist de herramientas es una restricción adicional del código y no convierte por sí sola el token en read-only.",
+    oauthPermissionNote: "Upwork controla el scope efectivo y actualmente puede conceder el conjunto completo de permisos al conectar. La allowlist de herramientas es una restricción adicional del código y no convierte por sí sola el token en read-only; el scope devuelto se conserva para auditoría.",
   };
 }

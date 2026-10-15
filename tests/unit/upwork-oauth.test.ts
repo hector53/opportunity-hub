@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getUpworkOAuthConfig, validateReadOnlyScope } from "@/server/connectors/upwork/config";
+import { assertUpworkOAuthOrigin, getUpworkOAuthConfig, requestOrigin, validateRequestedScope } from "@/server/connectors/upwork/config";
 import { buildAuthorizationUrl, createPkcePair, exchangeAuthorizationCode, revokeUpworkToken } from "@/server/connectors/upwork/oauth";
 import { UPWORK_MCP_REVOCATION_URL } from "@/server/connectors/upwork/config";
 import { constantTimeEqual, decryptSecret, encryptSecret, openOAuthState, sealOAuthState } from "@/server/connectors/upwork/secure";
@@ -27,7 +27,13 @@ describe("Upwork OAuth security", () => {
   });
 
   it("rejects a write-capable OAuth scope", () => {
-    expect(() => validateReadOnlyScope("jobs:read proposals:write")).toThrow(/read-only/i);
+    expect(() => validateRequestedScope("jobs:read proposals:write")).toThrow(/read-only/i);
+  });
+
+  it("requires the request origin to match the configured redirect origin exactly", () => {
+    expect(() => assertUpworkOAuthOrigin("http://127.0.0.1:3100/sources", env.UPWORK_MCP_REDIRECT_URI!)).not.toThrow();
+    expect(() => assertUpworkOAuthOrigin("http://localhost:3100/sources", env.UPWORK_MCP_REDIRECT_URI!)).toThrow(/origen.*redirect_uri|host exacto/i);
+    expect(requestOrigin("http://0.0.0.0:3100/sources", new Headers({ host: "127.0.0.1:3100" }))).toBe("http://127.0.0.1:3100");
   });
 
   it("requires a legitimate registered client or an explicit CIMD URL", () => {
@@ -73,6 +79,14 @@ describe("Upwork OAuth security", () => {
     expect(String(seenRequest?.body)).toContain("grant_type=authorization_code");
     expect(String(seenRequest?.body)).not.toContain("synthetic-client-secret");
     expect(JSON.stringify(seenRequest?.headers)).toContain("Authorization");
+  });
+
+  it("stores broad scopes returned by Upwork without treating them as a read-only grant", async () => {
+    const config = getUpworkOAuthConfig(env);
+    const grantedScope = "jobs:read proposals:write messages:write profile:read";
+    const fakeFetch: typeof fetch = async () => new Response(JSON.stringify({ access_token: "synthetic-access", refresh_token: "synthetic-refresh", expires_in: 3600, scope: grantedScope }), { status: 200, headers: { "content-type": "application/json" } });
+    const tokens = await exchangeAuthorizationCode(config, "synthetic-code", "synthetic-verifier", fakeFetch);
+    expect(tokens.scope).toBe(grantedScope);
   });
 
   it("uses the provider's revocation endpoint without exposing the token in the URL", async () => {

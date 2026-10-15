@@ -73,12 +73,22 @@ async function redactRows(rows: { id: string }[]): Promise<number> {
  */
 export async function purgeExpiredUpworkContent(now = new Date()): Promise<number> {
   await db.delete(schema.upworkOAuthTransactions).where(lte(schema.upworkOAuthTransactions.expiresAt, now));
+  const expiredSourceRecords = await db
+    .select({ id: schema.opportunitySourceRecords.id, opportunityId: schema.opportunitySourceRecords.opportunityId })
+    .from(schema.opportunitySourceRecords)
+    .where(and(eq(schema.opportunitySourceRecords.sourceKey, "upwork"), lte(schema.opportunitySourceRecords.retentionExpiresAt, now)));
+  if (expiredSourceRecords.length) {
+    await db
+      .delete(schema.opportunitySourceRecords)
+      .where(and(eq(schema.opportunitySourceRecords.sourceKey, "upwork"), lte(schema.opportunitySourceRecords.retentionExpiresAt, now)));
+  }
   const expired = await db
     .select({ id: schema.opportunities.id, retentionExpiresAt: schema.opportunities.retentionExpiresAt })
     .from(schema.opportunities)
     .where(and(eq(schema.opportunities.sourceKey, "upwork"), lte(schema.opportunities.retentionExpiresAt, now)));
 
-  return redactRows(expired.filter((row) => isUpworkContentExpired(row.retentionExpiresAt, now)));
+  const redacted = await redactRows(expired.filter((row) => isUpworkContentExpired(row.retentionExpiresAt, now)));
+  return expiredSourceRecords.length + redacted;
 }
 
 /** Deletes active cached Upwork results when the user disconnects the app. */
